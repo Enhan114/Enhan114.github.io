@@ -80,6 +80,9 @@ export default defineConfig(({ mode }) => {
   const productionBase = env.VITE_BASE_PATH || './';
   return {
     base: mode === 'production' ? productionBase : '/',
+    build: {
+      outDir: 'docs',
+    },
     server: {
       port: 3000,
       host: '0.0.0.0',
