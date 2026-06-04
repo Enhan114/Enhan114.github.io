@@ -6,6 +6,9 @@ const META = "meta";
 const FILES = "files";
 const SNAP = "playlist";
 const PLAYBACK = "aura:playback";
+const MIGRATION_KEY = "aura:migration";
+// Bump this when data format changes and old snapshots need to be cleared
+const CURRENT_MIGRATION = 2;
 
 const MODES = [PlayMode.LOOP_ALL, PlayMode.LOOP_ONE, PlayMode.SHUFFLE];
 
@@ -209,7 +212,35 @@ export const parseLibrarySnapshot = (raw: unknown): LibrarySnapshot | null => {
   return { queue };
 };
 
+const needsMigration = (): boolean => {
+  if (!hasWindow() || !("localStorage" in window)) {
+    return false;
+  }
+  const stored = window.localStorage.getItem(MIGRATION_KEY);
+  if (!stored) {
+    return true;
+  }
+  const version = parseInt(stored, 10);
+  return isNaN(version) || version < CURRENT_MIGRATION;
+};
+
+const applyMigration = async () => {
+  // Clear playlist snapshot so static songs reload with embedded cover art
+  await runDb([META], "readwrite", async (tx) => {
+    await waitReq(tx.objectStore(META).delete(SNAP));
+    return undefined;
+  });
+  if (hasWindow() && "localStorage" in window) {
+    window.localStorage.setItem(MIGRATION_KEY, String(CURRENT_MIGRATION));
+  }
+};
+
 export const loadLibrarySnapshot = async (): Promise<LibrarySnapshot | null> => {
+  if (needsMigration()) {
+    await applyMigration();
+    return null;
+  }
+
   const value = await runDb([META], "readonly", async (tx) => {
     const raw = await waitReq(tx.objectStore(META).get(SNAP));
     return parseLibrarySnapshot(raw);

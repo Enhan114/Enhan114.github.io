@@ -1,5 +1,6 @@
 import { Song } from "../types";
 import { parseLyrics } from "./lyrics";
+import { parseAudioMetadataFromUrl, extractColors } from "./utils";
 import manifest from "virtual:music-manifest";
 
 const baseUrl = import.meta.env.BASE_URL ?? "/";
@@ -16,6 +17,25 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
     const fileUrl = resolveAssetUrl(item.filePath);
     let lyrics;
     let needsLyricsMatch = true;
+    let coverUrl: string | undefined;
+    let colors: string[] = [];
+
+    // Try to extract embedded cover art and metadata from the audio file
+    try {
+      const metadata = await parseAudioMetadataFromUrl(fileUrl);
+      if (metadata.picture) {
+        coverUrl = metadata.picture;
+        colors = await extractColors(coverUrl);
+      }
+      // If embedded lyrics exist and no external lyrics file was matched,
+      // use the embedded lyrics
+      if (metadata.lyrics && metadata.lyrics.trim().length > 0 && !item.lyricsPath) {
+        lyrics = parseLyrics(metadata.lyrics);
+        needsLyricsMatch = false;
+      }
+    } catch (error) {
+      console.warn("Failed to extract metadata from static song:", item.title, error);
+    }
 
     if (item.lyricsPath) {
       try {
@@ -40,9 +60,10 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       fileUrl,
       origin: fileUrl,
       source: "remote",
+      coverUrl,
       lyrics,
       needsLyricsMatch,
-      colors: [],
+      colors: colors.length > 0 ? colors : [],
     });
   }
 

@@ -109,7 +109,71 @@ export const mergeLyrics = (original: string, translation: string): string => {
   return original + "\n" + translation;
 };
 
-// Metadata Parser using jsmediatags
+// Parse audio metadata from a URL (for static/preloaded songs)
+// Uses jsmediatags which reads tags from the beginning of the file via range requests
+export const parseAudioMetadataFromUrl = (
+  url: string,
+): Promise<{
+  title?: string;
+  artist?: string;
+  picture?: string;
+  lyrics?: string;
+}> => {
+  return new Promise((resolve) => {
+    try {
+      jsmediatags.read(url, {
+        onSuccess: (tag) => {
+          try {
+            const tags = tag.tags;
+            let pictureUrl = undefined;
+            let lyricsText = undefined;
+
+            if (tags.picture) {
+              const { data, format } = tags.picture;
+              let base64String = "";
+              const len = data.length;
+              for (let i = 0; i < len; i++) {
+                base64String += String.fromCharCode(data[i]);
+              }
+              pictureUrl = `data:${format};base64,${window.btoa(base64String)}`;
+            }
+
+            // Extract embedded lyrics (USLT tag for unsynchronized lyrics)
+            if (tags.USLT) {
+              lyricsText =
+                typeof tags.USLT === "object"
+                  ? tags.USLT.lyrics || tags.USLT.text
+                  : tags.USLT;
+            } else if (tags.lyrics) {
+              lyricsText = tags.lyrics;
+            } else if (tags.LYRICS) {
+              lyricsText = tags.LYRICS;
+            }
+
+            resolve({
+              title: tags.title,
+              artist: tags.artist,
+              picture: pictureUrl,
+              lyrics: lyricsText,
+            });
+          } catch (innerErr) {
+            console.error("Error parsing tags structure from URL:", innerErr);
+            resolve({});
+          }
+        },
+        onError: (error) => {
+          console.warn("Error reading tags from URL:", url, error);
+          resolve({});
+        },
+      });
+    } catch (err) {
+      console.error("jsmediatags crashed for URL:", url, err);
+      resolve({});
+    }
+  });
+};
+
+// Metadata Parser using jsmediatags (for File objects from file input)
 export const parseAudioMetadata = (
   file: File,
 ): Promise<{
