@@ -24,3 +24,7 @@ dist-ssr
 
 tests/*
 bun.lock
+
+# Screenshots
+image.png
+image.jpeg

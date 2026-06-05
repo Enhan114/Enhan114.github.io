@@ -46,6 +46,7 @@ declare module "virtual:music-manifest" {
     artist: string;
     filePath: string;
     lyricsPath?: string;
+    coverPath?: string;
   }
 
   const manifest: StaticMusicManifestEntry[];
