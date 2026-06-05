@@ -84,6 +84,8 @@ export const Interpolators = {
 //    tau = time constant (seconds); smaller = faster response.
 // ---------------------------------------------------------------------------
 
+import { smoothAlpha as lutSmoothAlpha } from "../services/physicsLUT";
+
 export class SmoothValue {
   private current: number;
   private target: number;
@@ -120,7 +122,8 @@ export class SmoothValue {
   update(dt: number): number {
     if (this._settled) return this.current;
 
-    const alpha = 1 - Math.exp(-dt / this.tau);
+    // Use pre-computed LUT instead of Math.exp(-dt/tau)
+    const alpha = lutSmoothAlpha(dt, this.tau);
     this.current += (this.target - this.current) * alpha;
 
     // Settle when close enough (prevent infinite tiny updates)

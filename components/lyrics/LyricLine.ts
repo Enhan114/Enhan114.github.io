@@ -465,6 +465,48 @@ export class LyricLine implements ILyricLine {
   private bgShow = 0;
   private mainHeight = 0;
 
+  // --- Pre-rendered word texture cache ("shader-like" pipeline) ---
+  // Each word is rasterised once in solid white.  At render time we draw a
+  // gradient rectangle and clip it to the word shape via compositing.
+  // This replaces fillText-with-gradient (expensive glyph rasterisation)
+  // with fillRect + drawImage (cheap GPU texture blits).
+  private wordTextures: Array<{
+    canvas: OffscreenCanvas | HTMLCanvasElement;
+    width: number;
+    height: number;
+    /** Baseline offset so the texture aligns with the layout y position */
+    baselineY: number;
+  } | null> | null = null;
+
+  /** Rasterise all words to white-on-transparent textures. */
+  private buildWordTextures(): void {
+    if (!this.layout || !this.layout.words.length) {
+      this.wordTextures = null;
+      return;
+    }
+
+    const fontScale = this.lyricLine.isBackground ? BG_FONT_SCALE : 1;
+    const { main, mainHeight } = getFonts(this.isMobile, fontScale);
+
+    this.wordTextures = this.layout.words.map((w) => {
+      const padX = 4;
+      const padTop = 2;
+      const padBot = 2;
+      const ww = Math.ceil(w.width + padX * 2);
+      const wh = Math.ceil(mainHeight + padTop + padBot);
+      const cvs = document.createElement("canvas");
+      cvs.width = ww * this.pixelRatio;
+      cvs.height = wh * this.pixelRatio;
+      const c = cvs.getContext("2d")!;
+      c.scale(this.pixelRatio, this.pixelRatio);
+      c.font = main;
+      c.textBaseline = "top";
+      c.fillStyle = "#FFFFFF";
+      c.fillText(w.text, padX, padTop);
+      return { canvas: cvs, width: ww, height: wh, baselineY: padTop };
+    });
+  }
+
   private getBackgroundBounds() {
     const start = this.lyricLine.time;
     let end = this.lyricLine.endTime;
@@ -783,93 +825,175 @@ export class LyricLine implements ILyricLine {
     }
   }
 
+  /**
+   * Draw words with a per-word gradient fill using pre-rendered textures.
+   *
+   * This is the "fragment shader" step of the rendering pipeline:
+   *   1. The word texture (rasterised once in buildWordTextures) is the geometry.
+   *   2. A gradient rectangle is the "colour shader".
+   *   3. Compositing (`destination-in`) clips the gradient to the word shape.
+   *
+   * This replaces the per-frame fillText(text, gradient) call — which
+   * rasterises glyphs every frame — with fillRect + drawImage, both pure
+   * GPU texture operations.
+   */
   private drawLiftedLine(words: WordLayout[], currentTime: number) {
-    const scale = this.lyricLine.isBackground ? BG_FONT_SCALE : 1;
-    const { main, mainHeight } = getFonts(this.isMobile, scale);
-    const FLOAT_UP = 0.05 * mainHeight;
-    const sidePad = 6;
-    const topPad = Math.max(4, Math.ceil(mainHeight * 0.18));
-    const bottomPad = Math.max(8, Math.ceil(mainHeight * 0.32));
-    const logicalHeight = mainHeight + topPad + bottomPad;
+    const hasTextures = this.wordTextures && this.wordTextures.length > 0;
 
-    let maxW = 0;
-    for (const w of words) if (w.width > maxW) maxW = w.width;
-    const bufW = Math.ceil((maxW + sidePad * 2) * this.pixelRatio);
-    const bufH = Math.ceil(logicalHeight * this.pixelRatio);
-    if (this.liftCanvas.width < bufW || this.liftCanvas.height < bufH) {
-      this.liftCanvas.width = Math.max(this.liftCanvas.width, bufW);
-      this.liftCanvas.height = Math.max(this.liftCanvas.height, bufH);
+    // Build a word-index → texture map for fast lookup
+    const wordToTex = new Map<number, (typeof this.wordTextures) extends Array<infer T> ? T : never>();
+    if (hasTextures) {
+      this.layout!.words.forEach((lw, i) => {
+        wordToTex.set(i, this.wordTextures![i]);
+      });
     }
+
+    const scale = this.lyricLine.isBackground ? BG_FONT_SCALE : 1;
+    const { mainHeight } = getFonts(this.isMobile, scale);
+    const FLOAT_UP = 0.05 * mainHeight;
+    const texPadX = 4; // matches buildWordTextures padX
+    const texPadTop = 2; // matches buildWordTextures padTop
+
+    const isBg = !!this.lyricLine.isBackground;
 
     for (const w of words) {
       const elapsed = currentTime - w.startTime;
-      const duration = w.endTime - w.startTime;
-      const safeDuration = Math.max(0.001, duration);
+      const duration = Math.max(0.001, w.endTime - w.startTime);
+      const p = clamp01(elapsed / duration);
 
-      const wordPxW = Math.ceil((w.width + sidePad * 2) * this.pixelRatio);
-      this.liftCtx.clearRect(
-        0,
-        0,
-        this.liftCanvas.width,
-        this.liftCanvas.height,
-      );
-      this.liftCtx.save();
-      this.liftCtx.scale(this.pixelRatio, this.pixelRatio);
-      this.liftCtx.font = main;
-      this.liftCtx.textBaseline = "top";
-
+      // Determine fill colours
+      let leftColor: string;
+      let rightColor: string;
       if (elapsed >= duration) {
-        this.liftCtx.fillStyle = this.lyricLine.isBackground
-          ? `rgba(255, 255, 255, ${BG_PAST_ALPHA})`
+        leftColor = isBg
+          ? `rgba(255,255,255,${BG_PAST_ALPHA})`
           : "#FFFFFF";
+        rightColor = leftColor;
       } else if (elapsed < 0) {
-        this.liftCtx.fillStyle = this.lyricLine.isBackground
-          ? `rgba(255, 255, 255, ${BG_FUTURE_ALPHA})`
-          : "rgba(255, 255, 255, 0.5)";
+        leftColor = isBg
+          ? `rgba(255,255,255,${BG_FUTURE_ALPHA})`
+          : "rgba(255,255,255,0.5)";
+        rightColor = leftColor;
       } else {
-        const grad = this.liftCtx.createLinearGradient(
-          sidePad,
-          0,
-          sidePad + w.width,
-          0,
-        );
-        const p = elapsed / safeDuration;
-        if (this.lyricLine.isBackground) {
-          grad.addColorStop(
-            Math.max(0, p),
-            `rgba(255, 255, 255, ${BG_ACTIVE_ALPHA})`,
-          );
-          grad.addColorStop(
-            Math.min(1, p + 0.15),
-            `rgba(255, 255, 255, ${BG_FUTURE_ALPHA})`,
-          );
-        } else {
-          grad.addColorStop(Math.max(0, p), "#FFFFFF");
-          grad.addColorStop(Math.min(1, p + 0.15), "rgba(255, 255, 255, 0.5)");
-        }
-        this.liftCtx.fillStyle = grad;
+        leftColor = isBg
+          ? `rgba(255,255,255,${BG_ACTIVE_ALPHA})`
+          : "#FFFFFF";
+        rightColor = isBg
+          ? `rgba(255,255,255,${BG_FUTURE_ALPHA})`
+          : "rgba(255,255,255,0.5)";
       }
 
-      this.liftCtx.fillText(w.text, sidePad, topPad);
-      this.liftCtx.restore();
-
+      // Float-up animation
       let lift = 0;
       if (elapsed >= 0) {
-        const floatDur = Math.max(1.0, safeDuration);
+        const floatDur = Math.max(1.0, duration);
         const t = Math.min(1, elapsed / floatDur);
         lift = FLOAT_UP * t * (2 - t);
       }
 
+      // ---- Texture-based compositing path (fast) ----
+      const tex = wordToTex.get(words.indexOf(w));
+      if (tex) {
+        const texx = w.x - texPadX;
+        const texy = w.y - lift - texPadTop;
+
+        // Draw gradient rectangle onto a scratch canvas
+        const gradW = Math.ceil(tex.width);
+        const gradH = Math.ceil(tex.height);
+        const tmpW = Math.ceil(gradW * this.pixelRatio);
+        const tmpH = Math.ceil(gradH * this.pixelRatio);
+
+        if (
+          this.liftCanvas.width < tmpW ||
+          this.liftCanvas.height < tmpH
+        ) {
+          this.liftCanvas.width = Math.max(this.liftCanvas.width, tmpW);
+          this.liftCanvas.height = Math.max(this.liftCanvas.height, tmpH);
+        }
+
+        // Clear scratch
+        this.liftCtx.clearRect(0, 0, tmpW, tmpH);
+
+        if (elapsed >= duration || elapsed < 0) {
+          // Solid colour — draw directly
+          this.liftCtx.fillStyle = leftColor;
+          this.liftCtx.fillRect(0, 0, gradW, gradH);
+        } else {
+          // Gradient fill
+          const grad = this.liftCtx.createLinearGradient(0, 0, gradW, 0);
+          const fadeWidth = Math.max(0.08, Math.min(0.25, duration * 0.1));
+          grad.addColorStop(Math.max(0, p - fadeWidth), leftColor);
+          grad.addColorStop(Math.min(1, p + fadeWidth), rightColor);
+          this.liftCtx.fillStyle = grad;
+          this.liftCtx.fillRect(0, 0, gradW, gradH);
+        }
+
+        // Clip gradient to word shape using cached texture
+        this.liftCtx.globalCompositeOperation = "destination-in";
+        this.liftCtx.drawImage(
+          tex.canvas,
+          0,
+          0,
+          tex.width * this.pixelRatio,
+          tex.height * this.pixelRatio,
+          0,
+          0,
+          gradW,
+          gradH,
+        );
+        this.liftCtx.globalCompositeOperation = "source-over";
+
+        // Blit result onto main canvas
+        this.ctx.drawImage(
+          this.liftCanvas,
+          0,
+          0,
+          tmpW,
+          tmpH,
+          texx,
+          texy,
+          gradW,
+          gradH,
+        );
+        continue;
+      }
+
+      // ---- Fallback: fillText path (when textures aren't built) ----
+      const topPad = Math.max(4, Math.ceil(mainHeight * 0.18));
+      const bottomPad = Math.max(8, Math.ceil(mainHeight * 0.32));
+      const logicalFallbackH = mainHeight + topPad + bottomPad;
+      const fbW = Math.ceil((w.width + 12) * this.pixelRatio);
+      const fbH = Math.ceil(logicalFallbackH * this.pixelRatio);
+
+      if (this.liftCanvas.width < fbW || this.liftCanvas.height < fbH) {
+        this.liftCanvas.width = Math.max(this.liftCanvas.width, fbW);
+        this.liftCanvas.height = Math.max(this.liftCanvas.height, fbH);
+      }
+
+      this.liftCtx.clearRect(0, 0, this.liftCanvas.width, this.liftCanvas.height);
+      this.liftCtx.save();
+      this.liftCtx.scale(this.pixelRatio, this.pixelRatio);
+      const { main } = getFonts(this.isMobile, scale);
+      this.liftCtx.font = main;
+      this.liftCtx.textBaseline = "top";
+
+      if (elapsed >= duration || elapsed < 0) {
+        this.liftCtx.fillStyle = leftColor;
+      } else {
+        const grad = this.liftCtx.createLinearGradient(6, 0, 6 + w.width, 0);
+        grad.addColorStop(Math.max(0, p), leftColor);
+        grad.addColorStop(Math.min(1, p + 0.15), rightColor);
+        this.liftCtx.fillStyle = grad;
+      }
+
+      this.liftCtx.fillText(w.text, 6, topPad);
+      this.liftCtx.restore();
+
       this.ctx.drawImage(
         this.liftCanvas,
-        0,
-        0,
-        wordPxW,
-        bufH,
-        w.x - sidePad,
-        w.y - lift - topPad,
-        wordPxW / this.pixelRatio,
-        logicalHeight,
+        0, 0, fbW, fbH,
+        w.x - 6, w.y - lift - topPad,
+        fbW / this.pixelRatio, logicalFallbackH,
       );
     }
   }
@@ -1261,6 +1385,9 @@ export class LyricLine implements ILyricLine {
     if (this.pixelRatio !== 1) {
       this.ctx.scale(this.pixelRatio, this.pixelRatio);
     }
+
+    // Pre-render word textures after layout changes
+    this.buildWordTextures();
 
     this.isDirty = true;
   }
