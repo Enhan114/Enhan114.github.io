@@ -1,6 +1,7 @@
 import { Song } from "../types";
 import { parseLyrics } from "./lyrics";
 import { extractColors } from "./utils";
+import { fetchLyricsWithCache } from "./cache";
 
 interface ManifestEntry {
   id: string;
@@ -58,13 +59,10 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
     if (item.lyricsPath) {
       try {
         const lyricsUrl = resolveAssetUrl(item.lyricsPath);
-        const response = await fetch(lyricsUrl);
-        if (response.ok) {
-          const text = await response.text();
-          if (text.trim().length > 0) {
-            lyrics = parseLyrics(text);
-            needsLyricsMatch = false;
-          }
+        const text = await fetchLyricsWithCache(lyricsUrl);
+        if (text.trim().length > 0) {
+          lyrics = parseLyrics(text);
+          needsLyricsMatch = false;
         }
       } catch (error) {
         console.warn("Failed to load static lyrics file:", item.lyricsPath, error);

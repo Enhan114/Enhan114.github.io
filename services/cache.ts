@@ -95,21 +95,67 @@ const RAW_IMAGE_CACHE_LIMIT = 50 * 1024 * 1024;
 
 const rawImageCache = createSizeLimitedLRU(RAW_IMAGE_CACHE_LIMIT);
 
+// --- Concurrent-request deduplication ---
+// Without this, the same cover URL can trigger 6-8 identical fetch()
+// calls before the first response populates the cache.  We keep a
+// Map of in-flight promises so every concurrent caller for the same
+// URL shares a single network request — like a promise-based lock
+// that resolves to the same Blob.
+const rawImageInFlight = new Map<string, Promise<Blob>>();
+const lyricsInFlight = new Map<string, Promise<string>>();
+
 export const imageResourceCache = createSizeLimitedLRU(IMAGE_CACHE_LIMIT, true);
 export const audioResourceCache = createSizeLimitedLRU(AUDIO_CACHE_LIMIT);
 
 export const fetchImageBlobWithCache = async (url: string): Promise<Blob> => {
+  // Cache hit — no in-flight tracking needed
   const cached = rawImageCache.get(url);
-  if (cached) {
-    return cached;
-  }
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${response.status}`);
-  }
-  const blob = await response.blob();
-  rawImageCache.set(url, blob);
-  return blob;
+  if (cached) return cached;
+
+  // Deduplicate concurrent requests
+  const inFlight = rawImageInFlight.get(url);
+  if (inFlight) return inFlight;
+
+  const promise = (async () => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status}`);
+      }
+      const blob = await response.blob();
+      rawImageCache.set(url, blob);
+      return blob;
+    } finally {
+      rawImageInFlight.delete(url);
+    }
+  })();
+
+  rawImageInFlight.set(url, promise);
+  return promise;
+};
+
+/**
+ * Fetch a lyrics file with concurrent-request deduplication.
+ */
+export const fetchLyricsWithCache = async (url: string): Promise<string> => {
+  const inFlight = lyricsInFlight.get(url);
+  if (inFlight) return inFlight;
+
+  const promise = (async () => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch lyrics: ${response.status}`);
+      }
+      const text = await response.text();
+      return text;
+    } finally {
+      lyricsInFlight.delete(url);
+    }
+  })();
+
+  lyricsInFlight.set(url, promise);
+  return promise;
 };
 
 export const loadImageElementWithCache = async (

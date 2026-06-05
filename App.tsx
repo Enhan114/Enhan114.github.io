@@ -141,27 +141,28 @@ const App: React.FC = () => {
   }, []);
 
   const [hasLoadedStaticMusic, setHasLoadedStaticMusic] = useState(false);
+  const staticMusicLoadedRef = useRef(false);
   useEffect(() => {
-    if (!playlist.isReady || hasLoadedStaticMusic) return;
+    if (!playlist.isReady || staticMusicLoadedRef.current) return;
+
+    staticMusicLoadedRef.current = true;
 
     let canceled = false;
     loadStaticSongs()
       .then((songs) => {
         if (canceled || songs.length === 0) return;
-        // Merge rather than replace so newly-added tracks appear even when
-        // the queue was restored from an older IndexedDB snapshot.
         playlist.mergeStaticSongs(songs);
+        setHasLoadedStaticMusic(true);
       })
-      .finally(() => {
-        if (!canceled) {
-          setHasLoadedStaticMusic(true);
-        }
+      .catch(() => {
+        // If loading fails, allow retry on next mount
+        staticMusicLoadedRef.current = false;
       });
 
     return () => {
       canceled = true;
     };
-  }, [hasLoadedStaticMusic, playlist, playlist.mergeStaticSongs, playlist.isReady]);
+  }, [playlist.isReady]);
 
   const handleFileChange = async (files: FileList) => {
     const wasEmpty = playlist.queue.length === 0;
