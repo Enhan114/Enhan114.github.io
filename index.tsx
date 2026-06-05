@@ -1,3 +1,4 @@
+import "./services/blobDebug"; // blob-URL leak diagnostic — remove after debugging
 import "./src/index.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
