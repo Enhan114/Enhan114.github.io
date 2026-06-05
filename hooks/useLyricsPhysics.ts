@@ -708,8 +708,9 @@ export const useLyricsPhysics = ({
   }, [clearSamples, lyrics, lineHeights, markScrollIdle]);
 
   // Helper: Update a single spring value
-  // When config matches a pre-computed LUT profile we use O(1) table
-  // lookup instead of O(n) force-integration steps.
+  // Falls back to full Hooke's-law integration because the LUT only
+  // handles zero-velocity initial conditions.  The LUT is still
+  // available for callers who don't have significant velocity.
   const updateSpring = (
     state: SpringState,
     config: SpringConfig,
@@ -717,14 +718,12 @@ export const useLyricsPhysics = ({
     maxVelocity = Number.POSITIVE_INFINITY,
   ) => {
     const displacement = state.current - state.target;
-    const lutStep = springStep(dt, config);
-    // Normalised LUT step: maps (pos=1,vel=0,target=0) → (pos',vel')
-    // Scale by actual displacement for linear spring response
-    state.velocity = clampAbs(
-      state.velocity * lutStep.pos + displacement * lutStep.vel,
-      maxVelocity,
-    );
-    state.current = state.target + displacement * lutStep.pos;
+    const springForce = -config.stiffness * displacement;
+    const dampingForce = -config.damping * state.velocity;
+    const acceleration = (springForce + dampingForce) / config.mass;
+
+    state.velocity = clampAbs(state.velocity + acceleration * dt, maxVelocity);
+    state.current += state.velocity * dt;
 
     if (
       Math.abs(state.velocity) < (config.precision || 0.01) &&

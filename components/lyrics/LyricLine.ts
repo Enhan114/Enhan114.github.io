@@ -892,7 +892,9 @@ export class LyricLine implements ILyricLine {
       }
 
       // ---- Texture-based compositing path (fast) ----
-      const tex = wordToTex.get(words.indexOf(w));
+      // words is a subset of this.layout.words — must look up by
+      // the original index in the full layout, not the subset position.
+      const tex = wordToTex.get(this.layout!.words.indexOf(w));
       if (tex) {
         const texx = w.x - texPadX;
         const texy = w.y - lift - texPadTop;
