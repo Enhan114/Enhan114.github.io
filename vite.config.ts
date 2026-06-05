@@ -172,18 +172,49 @@ const createMusicManifest = (rootDir: string): ManifestEntry[] => {
   return songs.sort((a, b) => a.filePath.localeCompare(b.filePath));
 };
 
+const MANIFEST_OUTPUT = "public/music-manifest.json";
+
+const writeManifest = (rootDir: string) => {
+  const manifest = createMusicManifest(rootDir);
+  const outPath = path.join(rootDir, MANIFEST_OUTPUT);
+  const dir = path.dirname(outPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(outPath, JSON.stringify(manifest, null, 2));
+  console.log(`🎵 Music manifest updated: ${manifest.length} tracks`);
+};
+
 const musicManifestPlugin = (): Plugin => ({
   name: "vite-plugin-music-manifest",
-  resolveId(id) {
-    if (id === "virtual:music-manifest") {
-      return id;
-    }
-    return null;
+  // Production: write manifest at build start so it lands in outDir/public
+  buildStart() {
+    writeManifest(path.resolve(__dirname));
   },
-  load(id) {
-    if (id !== "virtual:music-manifest") return null;
-    const manifest = createMusicManifest(path.resolve(__dirname));
-    return `export default ${JSON.stringify(manifest)};`;
+  // Dev mode: configure server and file watcher
+  configureServer(server) {
+    const rootDir = path.resolve(__dirname);
+    writeManifest(rootDir);
+
+    const musicDir = path.join(rootDir, "public", "music");
+    if (fs.existsSync(musicDir)) {
+      const watcher = fs.watch(
+        musicDir,
+        { recursive: true },
+        (_event, filename) => {
+          if (!filename) return;
+          const ext = path.extname(filename).toLowerCase();
+          if (
+            AUDIO_EXTENSIONS.has(ext) ||
+            LYRIC_EXTENSIONS.has(ext) ||
+            filename.endsWith(".cover.jpg") ||
+            filename.endsWith(".cover.png")
+          ) {
+            writeManifest(rootDir);
+            server.ws.send({ type: "full-reload" });
+          }
+        },
+      );
+      server.httpServer?.once("close", () => watcher.close());
+    }
   },
 });
 

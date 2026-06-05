@@ -39,16 +39,3 @@ declare module "jsmediatags/dist/jsmediatags.min.js" {
   export default jsmediatags;
 }
 
-declare module "virtual:music-manifest" {
-  export interface StaticMusicManifestEntry {
-    id: string;
-    title: string;
-    artist: string;
-    filePath: string;
-    lyricsPath?: string;
-    coverPath?: string;
-  }
-
-  const manifest: StaticMusicManifestEntry[];
-  export default manifest;
-}
