@@ -1571,15 +1571,15 @@ export class LyricLine implements ILyricLine {
 
     // Build word list with timing information.
     // When the source provides word-level timing we use it directly.
-    // Otherwise we estimate per-word times by distributing the line's
-    // duration evenly across words.  This enables per-word gradient
-    // fills ("逐字填充") even for plain LRC lyrics.
+    // For plain LRC without per-word timing we set isVerbatim to false
+    // and let the renderer use a character-weighted split of the line
+    // duration.  This produces a natural per-word fill that matches
+    // real-world singing pace better than a flat even split.
     if (line.words && line.words.length > 0) {
       line.words.forEach((w: any) => {
         addWord(w.text, w.startTime, w.endTime, true);
       });
     } else {
-      // Estimate word timing: distribute line duration evenly
       const lineEnd = line.endTime && line.endTime > line.time
         ? line.endTime
         : line.time + 4;
@@ -1591,12 +1591,10 @@ export class LyricLine implements ILyricLine {
           tokens.push({ text: seg.segment });
         }
       } else if (lang !== "en") {
-        // CJK: one token per character
         for (const c of line.text) {
           tokens.push({ text: c });
         }
       } else {
-        // English: split by word, preserving trailing spaces
         const wordsArr = line.text.split(" ");
         wordsArr.forEach((word: string, index: number) => {
           tokens.push({ text: word });
@@ -1607,19 +1605,29 @@ export class LyricLine implements ILyricLine {
       }
 
       if (tokens.length === 0) {
-        // Fallback: treat the whole line as one word
         tokens.push({ text: line.text });
       }
 
+      // Character-weighted time distribution with a minimum per-token
+      // window so short function words don't flash past instantly.
+      const MIN_TOKEN_S = 0.38;
+      const charCounts = tokens.map(
+        (t) => Math.max(1, [...t.text].filter((c) => c.trim() !== "" || c === " ").length),
+      );
+      const totalChars = charCounts.reduce((s, c) => s + c, 0) || 1;
+      const totalMin = tokens.length * MIN_TOKEN_S;
+      const effectiveDur = Math.max(lineDuration, totalMin);
+      const timeBudget = effectiveDur - totalMin;
+      let cursor = 0;
+
       tokens.forEach((token, i) => {
-        const startRatio = i / tokens.length;
-        const endRatio = (i + 1) / tokens.length;
-        addWord(
-          token.text,
-          line.time + startRatio * lineDuration,
-          line.time + endRatio * lineDuration,
-          true, // isVerbatim so renderer uses per-word gradient fills
-        );
+        const weight = totalChars > 0 ? charCounts[i] / totalChars : 1 / tokens.length;
+        const extra = timeBudget > 0 ? weight * timeBudget : 0;
+        const wordDuration = MIN_TOKEN_S + extra;
+        const start = line.time + cursor;
+        const end = start + wordDuration;
+        cursor += wordDuration;
+        addWord(token.text, start, end, true);
       });
     }
 
