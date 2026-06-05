@@ -8,7 +8,7 @@ const SNAP = "playlist";
 const PLAYBACK = "aura:playback";
 const MIGRATION_KEY = "aura:migration";
 // Bump this when data format changes and old snapshots need to be cleared
-const CURRENT_MIGRATION = 2;
+const CURRENT_MIGRATION = 3;
 
 const MODES = [PlayMode.LOOP_ALL, PlayMode.LOOP_ONE, PlayMode.SHUFFLE];
 

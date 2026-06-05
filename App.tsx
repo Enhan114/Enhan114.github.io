@@ -143,16 +143,14 @@ const App: React.FC = () => {
   const [hasLoadedStaticMusic, setHasLoadedStaticMusic] = useState(false);
   useEffect(() => {
     if (!playlist.isReady || hasLoadedStaticMusic) return;
-    if (playlist.queue.length > 0) {
-      setHasLoadedStaticMusic(true);
-      return;
-    }
 
     let canceled = false;
     loadStaticSongs()
       .then((songs) => {
         if (canceled || songs.length === 0) return;
-        playlist.addSongs(songs);
+        // Merge rather than replace so newly-added tracks appear even when
+        // the queue was restored from an older IndexedDB snapshot.
+        playlist.mergeStaticSongs(songs);
       })
       .finally(() => {
         if (!canceled) {
@@ -163,7 +161,7 @@ const App: React.FC = () => {
     return () => {
       canceled = true;
     };
-  }, [hasLoadedStaticMusic, playlist, playlist.addSongs, playlist.isReady]);
+  }, [hasLoadedStaticMusic, playlist, playlist.mergeStaticSongs, playlist.isReady]);
 
   const handleFileChange = async (files: FileList) => {
     const wasEmpty = playlist.queue.length === 0;

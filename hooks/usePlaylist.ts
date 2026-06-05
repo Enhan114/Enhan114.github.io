@@ -157,6 +157,19 @@ export const usePlaylist = () => {
     appendSongs(songs);
   }, [appendSongs]);
 
+  // Merge static songs into the queue: add only songs whose id is not
+  // already present.  This ensures newly-added music files show up on
+  // the next page load even when IndexedDB still holds an older snapshot.
+  const mergeStaticSongs = useCallback((songs: Song[]) => {
+    if (songs.length === 0) return;
+    setQueue((prev) => {
+      const existing = new Set(prev.map((s) => s.id));
+      const fresh = songs.filter((s) => !existing.has(s.id));
+      if (fresh.length === 0) return prev;
+      return [...prev, ...fresh];
+    });
+  }, []);
+
   const reorder = useCallback((ids: string[]) => {
     if (ids.length === 0) return;
 
@@ -424,6 +437,7 @@ export const usePlaylist = () => {
     isReady,
     updateSongInQueue,
     addSongs,
+    mergeStaticSongs,
     reorder,
     removeSongs,
     addLocalFiles,
