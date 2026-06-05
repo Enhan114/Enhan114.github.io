@@ -986,8 +986,8 @@ export class LyricLine implements ILyricLine {
 
     if (enableGlow && glow > 0.001) {
       this.drawGlow(
-        glow * EMPHASIS_GLOW_WIDE,
-        fontHeight * EMPHASIS_GLOW_AURA,
+        glow * EMPHASIS_GLOW_CORE,
+        fontHeight * EMPHASIS_GLOW_TIGHT,
         physicalWidth,
         physicalHeight,
         logicalWidth,
@@ -996,14 +996,6 @@ export class LyricLine implements ILyricLine {
       this.drawGlow(
         glow * EMPHASIS_GLOW_MID,
         fontHeight * EMPHASIS_GLOW_SOFT,
-        physicalWidth,
-        physicalHeight,
-        logicalWidth,
-        logicalHeight,
-      );
-      this.drawGlow(
-        glow * EMPHASIS_GLOW_CORE,
-        fontHeight * EMPHASIS_GLOW_TIGHT,
         physicalWidth,
         physicalHeight,
         logicalWidth,
@@ -1448,26 +1440,57 @@ export class LyricLine implements ILyricLine {
       });
     };
 
+    // Build word list with timing information.
+    // When the source provides word-level timing we use it directly.
+    // Otherwise we estimate per-word times by distributing the line's
+    // duration evenly across words.  This enables per-word gradient
+    // fills ("逐字填充") even for plain LRC lyrics.
     if (line.words && line.words.length > 0) {
       line.words.forEach((w: any) => {
         addWord(w.text, w.startTime, w.endTime, true);
       });
-    } else if (segmenter) {
-      const segments = segmenter.segment(line.text);
-      for (const seg of segments) {
-        addWord(seg.segment, line.time, 999999, false);
-      }
-    } else if (lang !== "en") {
-      line.text.split("").forEach((c: string) => {
-        addWord(c, line.time, 999999, false);
-      });
     } else {
-      const wordsArr = line.text.split(" ");
-      wordsArr.forEach((word: string, index: number) => {
-        addWord(word, line.time, 999999, false);
-        if (index < wordsArr.length - 1) {
-          addWord(" ", line.time, 999999, false);
+      // Estimate word timing: distribute line duration evenly
+      const lineEnd = line.endTime && line.endTime > line.time
+        ? line.endTime
+        : line.time + 4;
+      const lineDuration = Math.max(0.01, lineEnd - line.time);
+
+      const tokens: Array<{ text: string }> = [];
+      if (segmenter) {
+        for (const seg of segmenter.segment(line.text)) {
+          tokens.push({ text: seg.segment });
         }
+      } else if (lang !== "en") {
+        // CJK: one token per character
+        for (const c of line.text) {
+          tokens.push({ text: c });
+        }
+      } else {
+        // English: split by word, preserving trailing spaces
+        const wordsArr = line.text.split(" ");
+        wordsArr.forEach((word: string, index: number) => {
+          tokens.push({ text: word });
+          if (index < wordsArr.length - 1) {
+            tokens.push({ text: " " });
+          }
+        });
+      }
+
+      if (tokens.length === 0) {
+        // Fallback: treat the whole line as one word
+        tokens.push({ text: line.text });
+      }
+
+      tokens.forEach((token, i) => {
+        const startRatio = i / tokens.length;
+        const endRatio = (i + 1) / tokens.length;
+        addWord(
+          token.text,
+          line.time + startRatio * lineDuration,
+          line.time + endRatio * lineDuration,
+          true, // isVerbatim so renderer uses per-word gradient fills
+        );
       });
     }
 

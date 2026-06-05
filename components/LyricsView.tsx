@@ -576,6 +576,14 @@ const LyricsView: React.FC<LyricsViewProps> = ({
       });
     });
 
+    // --- Group by blur to minimise expensive ctx.filter state changes ---
+    // Lines with blur=0 ("none") are drawn in a single batch without
+    // touching ctx.filter.  Only the few blurred lines (inactive, far from
+    // anchor) pay the Gaussian-blur cost, and they're grouped by blur value
+    // so each distinct blur is set only once per frame.
+    const noBlur: typeof queue = [];
+    const blurred: typeof queue = [];
+
     queue
       .sort((a, b) => {
         if (Math.abs(a.visualY - b.visualY) > 0.5) {
@@ -587,6 +595,8 @@ const LyricsView: React.FC<LyricsViewProps> = ({
         return a.index - b.index;
       })
       .forEach((item) => {
+        // Regenerate line canvas (only active / background / dirty lines
+        // actually redraw internally — others return cheaply)
         const useVisualTime = item.isActive || item.line.isBackgroundLine();
         item.line.draw(
           useVisualTime ? visualTime : currentTime,
@@ -595,34 +605,69 @@ const LyricsView: React.FC<LyricsViewProps> = ({
           item.hoverProgress,
         );
 
-        ctx.save();
-
-        const cy = item.visualY + item.lineHeight / 2;
-        const pivotX = item.line.getScalePivot();
-        const effectiveScale = item.line.isInterlude() ? 1 : item.scale;
-        ctx.translate(pivotX, cy);
-        ctx.scale(effectiveScale, effectiveScale);
-        ctx.translate(-pivotX, -item.lineHeight / 2);
-
-        if (Math.abs(item.pressScale - 1) > 0.001) {
-          const pressX = item.line.getPressPivot();
-          ctx.translate(pressX, item.lineHeight / 2);
-          ctx.scale(item.pressScale, item.pressScale);
-          ctx.translate(-pressX, -item.lineHeight / 2);
+        if (item.blur > 0.5) {
+          blurred.push(item);
+        } else {
+          noBlur.push(item);
         }
-
-        ctx.globalAlpha = item.opacity;
-        ctx.filter = item.blur > 0.5 ? `blur(${item.blur}px)` : "none";
-        ctx.drawImage(
-          item.line.getCanvas(),
-          0,
-          0,
-          item.line.getLogicalWidth(),
-          item.line.getLogicalHeight(),
-        );
-
-        ctx.restore();
       });
+
+    const drawItem = (
+      item: (typeof queue)[0],
+    ) => {
+      ctx.save();
+
+      const cy = item.visualY + item.lineHeight / 2;
+      const pivotX = item.line.getScalePivot();
+      const effectiveScale = item.line.isInterlude() ? 1 : item.scale;
+      ctx.translate(pivotX, cy);
+      ctx.scale(effectiveScale, effectiveScale);
+      ctx.translate(-pivotX, -item.lineHeight / 2);
+
+      if (Math.abs(item.pressScale - 1) > 0.001) {
+        const pressX = item.line.getPressPivot();
+        ctx.translate(pressX, item.lineHeight / 2);
+        ctx.scale(item.pressScale, item.pressScale);
+        ctx.translate(-pressX, -item.lineHeight / 2);
+      }
+
+      ctx.globalAlpha = item.opacity;
+      ctx.drawImage(
+        item.line.getCanvas(),
+        0,
+        0,
+        item.line.getLogicalWidth(),
+        item.line.getLogicalHeight(),
+      );
+
+      ctx.restore();
+    };
+
+    // Batch 1 — no blur (vast majority of lines)
+    if (noBlur.length > 0) {
+      ctx.filter = "none";
+      for (const item of noBlur) {
+        drawItem(item);
+      }
+    }
+
+    // Batch 2 — blurred lines, grouped by rounded blur value
+    if (blurred.length > 0) {
+      // Sort by blur so identical values are consecutive
+      blurred.sort((a, b) => a.blur - b.blur);
+      let currentFilter = "";
+      for (const item of blurred) {
+        // Round blur to 0.25px to increase reuse without visible difference
+        const roundedBlur = Math.round(item.blur * 4) / 4;
+        const filterStr = `blur(${roundedBlur}px)`;
+        if (ctx.filter !== filterStr) {
+          ctx.filter = filterStr;
+          currentFilter = filterStr;
+        }
+        drawItem(item);
+      }
+    }
+    ctx.filter = "none";
 
     // Draw Mask
     ctx.globalCompositeOperation = "destination-in";
