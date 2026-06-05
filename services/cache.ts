@@ -7,8 +7,8 @@ const isMobileViewport = () => {
   return window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
 };
 
-const createSizeLimitedLRU = (limitBytes: number) => {
-  const map = new Map<string, { blob: Blob; size: number }>();
+const createSizeLimitedLRU = (limitBytes: number, revokeBlobUrls = false) => {
+  const map = new Map<string, { blob: Blob; size: number; url?: string }>();
   let totalSize = 0;
 
   const evictIfNeeded = () => {
@@ -19,6 +19,9 @@ const createSizeLimitedLRU = (limitBytes: number) => {
       map.delete(oldestKey);
       if (entry) {
         totalSize -= entry.size;
+        if (revokeBlobUrls && entry.url) {
+          URL.revokeObjectURL(entry.url);
+        }
       }
     }
   };
@@ -31,15 +34,30 @@ const createSizeLimitedLRU = (limitBytes: number) => {
       map.set(key, entry);
       return entry.blob;
     },
+    /** Returns { blob, url } — the url is stable and reused across lookups. */
+    getWithUrl(key: string): { blob: Blob; url: string } | null {
+      const entry = map.get(key);
+      if (!entry) return null;
+      map.delete(key);
+      if (!entry.url) {
+        entry.url = URL.createObjectURL(entry.blob);
+      }
+      map.set(key, entry);
+      return { blob: entry.blob, url: entry.url };
+    },
     set(key: string, blob: Blob) {
       const size = blob.size || 0;
       if (size <= 0 || size > limitBytes) {
         return;
       }
+      // Evict previous entry for this key (and revoke its URL)
       if (map.has(key)) {
         const existing = map.get(key);
         if (existing) {
           totalSize -= existing.size;
+          if (revokeBlobUrls && existing.url) {
+            URL.revokeObjectURL(existing.url);
+          }
         }
         map.delete(key);
       }
@@ -51,9 +69,17 @@ const createSizeLimitedLRU = (limitBytes: number) => {
       const entry = map.get(key);
       if (!entry) return;
       totalSize -= entry.size;
+      if (revokeBlobUrls && entry.url) {
+        URL.revokeObjectURL(entry.url);
+      }
       map.delete(key);
     },
     clear() {
+      if (revokeBlobUrls) {
+        for (const entry of map.values()) {
+          if (entry.url) URL.revokeObjectURL(entry.url);
+        }
+      }
       map.clear();
       totalSize = 0;
     },
@@ -69,7 +95,7 @@ const RAW_IMAGE_CACHE_LIMIT = 50 * 1024 * 1024;
 
 const rawImageCache = createSizeLimitedLRU(RAW_IMAGE_CACHE_LIMIT);
 
-export const imageResourceCache = createSizeLimitedLRU(IMAGE_CACHE_LIMIT);
+export const imageResourceCache = createSizeLimitedLRU(IMAGE_CACHE_LIMIT, true);
 export const audioResourceCache = createSizeLimitedLRU(AUDIO_CACHE_LIMIT);
 
 export const fetchImageBlobWithCache = async (url: string): Promise<Blob> => {

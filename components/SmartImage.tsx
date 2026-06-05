@@ -56,29 +56,19 @@ const SmartImage: React.FC<SmartImageProps> = ({
   );
   const [displaySrc, setDisplaySrc] = useState<string | null>(null);
   const currentUrlRef = useRef<string | null>(null);
-  const currentUrlIsBlobRef = useRef(false);
-
-  const revokeCurrentObjectUrl = useCallback(() => {
-    if (currentUrlRef.current && currentUrlIsBlobRef.current) {
-      URL.revokeObjectURL(currentUrlRef.current);
-    }
-  }, []);
 
   const resetDisplay = useCallback(() => {
-    revokeCurrentObjectUrl();
     currentUrlRef.current = null;
-    currentUrlIsBlobRef.current = false;
     setDisplaySrc(null);
-  }, [revokeCurrentObjectUrl]);
+  }, []);
 
   const setFinalUrl = useCallback(
-    (url: string, isBlob: boolean) => {
-      revokeCurrentObjectUrl();
+    (url: string, _isBlob: boolean) => {
+      // Blob URLs are now owned by imageResourceCache.
       currentUrlRef.current = url;
-      currentUrlIsBlobRef.current = isBlob;
       setDisplaySrc(url);
     },
-    [revokeCurrentObjectUrl],
+    [],
   );
 
   useEffect(() => {
@@ -186,13 +176,16 @@ const SmartImage: React.FC<SmartImageProps> = ({
     }
 
     let canceled = false;
-    const cachedBlob = imageResourceCache.get(effectiveKey);
-    if (cachedBlob) {
-      const cachedUrl = URL.createObjectURL(cachedBlob);
-      setFinalUrl(cachedUrl, true);
+
+    // Reuse cached blob+URL so we never create duplicate blob URLs
+    // for the same optimized image.  This prevents the blob-URL spam
+    // that otherwise accumulates in the Sources panel every time
+    // ResizeObserver fires.
+    const cached = imageResourceCache.getWithUrl(effectiveKey);
+    if (cached) {
+      setFinalUrl(cached.url, true);
       return () => {
         canceled = true;
-        URL.revokeObjectURL(cachedUrl);
       };
     }
 
@@ -239,18 +232,14 @@ const SmartImage: React.FC<SmartImageProps> = ({
               return;
             }
 
-            try {
-              imageResourceCache.set(effectiveKey, blob);
-            } catch {
-              // Silently ignore cache failures.
-            }
-
-            const optimizedUrl = URL.createObjectURL(blob);
-            if (canceled) {
-              URL.revokeObjectURL(optimizedUrl);
+            // Store blob and get back a stable, cache-owned URL
+            imageResourceCache.set(effectiveKey, blob);
+            const cachedEntry = imageResourceCache.getWithUrl(effectiveKey);
+            if (!cachedEntry || canceled) {
+              handleFallback();
               return;
             }
-            setFinalUrl(optimizedUrl, true);
+            setFinalUrl(cachedEntry.url, false);
           },
           "image/jpeg",
           0.78,
