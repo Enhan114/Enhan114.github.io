@@ -649,9 +649,44 @@ export class LyricLine implements ILyricLine {
     }
 
     if (active && !hasTimedWords) {
-      this.ctx.fillStyle = isBackground
-        ? `rgba(255, 255, 255, ${BG_ACTIVE_ALPHA})`
-        : "#FFFFFF";
+      // Line-level progress fill: sweep gradient from left to right
+      // based on how far the playhead is through this line's duration
+      const lineStart = this.lyricLine.time;
+      const lineEnd = this.lyricLine.endTime || lineStart + 4;
+      const duration = Math.max(0.001, lineEnd - lineStart);
+      const p = clamp01((currentTime - lineStart) / duration);
+
+      let minX = Infinity;
+      let maxX = 0;
+      for (const w of this.layout.words) {
+        if (w.x < minX) minX = w.x;
+        if (w.x + w.width > maxX) maxX = w.x + w.width;
+      }
+
+      if (Number.isFinite(minX) && maxX > minX) {
+        const gradient = this.ctx.createLinearGradient(minX, 0, maxX, 0);
+        if (isBackground) {
+          gradient.addColorStop(
+            Math.max(0, p),
+            `rgba(255, 255, 255, ${BG_ACTIVE_ALPHA})`,
+          );
+          gradient.addColorStop(
+            Math.min(1, p + 0.12),
+            `rgba(255, 255, 255, ${BG_FUTURE_ALPHA})`,
+          );
+        } else {
+          gradient.addColorStop(Math.max(0, p), "#FFFFFF");
+          gradient.addColorStop(
+            Math.min(1, p + 0.12),
+            "rgba(255, 255, 255, 0.5)",
+          );
+        }
+        this.ctx.fillStyle = gradient;
+      } else {
+        this.ctx.fillStyle = isBackground
+          ? `rgba(255, 255, 255, ${BG_ACTIVE_ALPHA})`
+          : "#FFFFFF";
+      }
       this.layout.words.forEach((w) => this.ctx.fillText(w.text, w.x, w.y));
     } else if (active) {
       const FLOAT_UP = 0.05 * mainHeight;
