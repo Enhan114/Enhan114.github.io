@@ -36,6 +36,14 @@
     "id": "static-Andrew-Prahlow---Travelers--encore-flac"
   },
   {
+    "filePath": "music/Athletics - III.flac",
+    "lyricsPath": "music/Athletics - III.lrc",
+    "coverPath": "music/Athletics - III.cover.png",
+    "title": "III",
+    "artist": "Athletics",
+    "id": "static-Athletics---III-flac"
+  },
+  {
     "filePath": "music/Bebe Rexha - Ferrari.flac",
     "coverPath": "music/Bebe Rexha - Ferrari.cover.jpg",
     "title": "Ferrari",
