@@ -798,168 +798,105 @@ export class LyricLine implements ILyricLine {
     this.ctx.restore();
   }
 
-  /**
-   * Draw a row of timed words with a single continuous sweep gradient.
-   *
-   * The sweep position is computed from the full line's word timings so
-   * it moves smoothly from the first word to the last.  Only the words
-   * in `activeWords` (the current row) are actually rendered.
-   */
   private drawActiveWords(activeWords: WordLayout[], currentTime: number) {
-    if (!this.layout) return;
-    const isBg = !!this.lyricLine.isBackground;
-
-    // --- Emphasised words (rare: long syllables with glow) ---
+    const liftWords: WordLayout[] = [];
     const emphasizedWords: Array<{ word: WordLayout; index: number }> = [];
+
     activeWords.forEach((word, index) => {
       const elapsed = currentTime - word.startTime;
-      const animDur = this.getWordAnimationDuration(word, activeWords, index);
+      const animationDuration = this.getWordAnimationDuration(word, activeWords, index);
+
       if (
         this.shouldEmphasizeWord(word) &&
         elapsed >= -EMPHASIS_ENTRY_LEAD &&
-        elapsed < animDur
+        elapsed < animationDuration
       ) {
         emphasizedWords.push({ word, index });
+      } else {
+        liftWords.push(word);
       }
     });
-    if (emphasizedWords.length === activeWords.length) {
-      // All words are emphasised — draw them individually
-      for (const { word, index } of emphasizedWords) {
-        this.drawEmphasizedWord(word, activeWords, index, currentTime);
-      }
-      return;
+
+    if (liftWords.length > 0) {
+      this.drawLiftedLine(liftWords, currentTime);
     }
 
-    // --- Continuous sweep position (computed from full-line timings) ---
-    const timedWords = this.layout.words.filter(
-      (w) => w.isVerbatim || w.text.trim(),
-    );
-    if (timedWords.length === 0) return;
-
-    const textStartX = timedWords[0].x;
-    const textEndX =
-      timedWords[timedWords.length - 1].x +
-      timedWords[timedWords.length - 1].width;
-    const textWidth = Math.max(1, textEndX - textStartX);
-
-    const lineStart = timedWords[0].startTime;
-    const lineEnd = Math.max(
-      lineStart + 0.01,
-      timedWords[timedWords.length - 1].endTime || lineStart + 4,
-    );
-
-    let sweepX: number;
-    if (currentTime <= lineStart) {
-      sweepX = textStartX;
-    } else if (currentTime >= lineEnd) {
-      sweepX = textEndX;
-    } else {
-      sweepX = textStartX;
-      for (let i = 0; i < timedWords.length; i++) {
-        const w = timedWords[i];
-        if (currentTime >= w.startTime && currentTime < w.endTime) {
-          const wp = clamp01(
-            (currentTime - w.startTime) /
-              Math.max(0.001, w.endTime - w.startTime),
-          );
-          sweepX = w.x + wp * w.width;
-          break;
-        } else if (currentTime < w.startTime && i > 0) {
-          sweepX = timedWords[i - 1].x + timedWords[i - 1].width;
-          break;
-        } else if (i === timedWords.length - 1) {
-          sweepX = w.x + w.width;
-        }
-      }
-    }
-
-    // Colours
-    const baseColor = getLyricsColor();
-    const pastColor = isBg
-      ? `rgba(255,255,255,${BG_PAST_ALPHA})`
-      : baseColor;
-    const leftColor = isBg
-      ? `rgba(255,255,255,${BG_ACTIVE_ALPHA})`
-      : baseColor;
-    const rightColor = isBg
-      ? `rgba(255,255,255,${BG_FUTURE_ALPHA})`
-      : futureLyricsColor(0.5);
-
-    // Layout
-    const scale = isBg ? BG_FONT_SCALE : 1;
-    const { mainHeight } = getFonts(this.isMobile, scale);
-    const FLOAT_UP = 0.05 * mainHeight;
-    const texPadX = 4;
-    const texPadTop = 2;
-
-    const gradW = Math.ceil(textWidth + texPadX * 2);
-    const gradH = Math.ceil(mainHeight + texPadTop * 2 + 4);
-    const physW = Math.ceil(gradW * this.pixelRatio);
-    const physH = Math.ceil(gradH * this.pixelRatio);
-
-    if (this.liftCanvas.width < physW || this.liftCanvas.height < physH) {
-      this.liftCanvas.width = Math.max(this.liftCanvas.width, physW);
-      this.liftCanvas.height = Math.max(this.liftCanvas.height, physH);
-    }
-
-    this.liftCtx.clearRect(0, 0, physW, physH);
-    this.liftCtx.save();
-    this.liftCtx.scale(this.pixelRatio, this.pixelRatio);
-
-    // Single continuous gradient
-    const normalizedEdge = clamp01((sweepX - textStartX) / textWidth);
-    const fadeRatio = isBg ? 0.18 : 0.12;
-    const grad = this.liftCtx.createLinearGradient(
-      texPadX, 0, texPadX + gradW, 0,
-    );
-    grad.addColorStop(0, pastColor);
-    grad.addColorStop(Math.max(0, normalizedEdge - fadeRatio), leftColor);
-    grad.addColorStop(Math.min(1, normalizedEdge + fadeRatio), rightColor);
-    this.liftCtx.fillStyle = grad;
-    this.liftCtx.fillRect(0, 0, gradW, gradH);
-
-    // Clip to word textures — only for words in the current row
-    this.liftCtx.globalCompositeOperation = "destination-in";
-    if (this.wordTextures) {
-      for (const w of activeWords) {
-        const texIdx = this.layout!.words.indexOf(w);
-        if (texIdx < 0) continue;
-        const tex = this.wordTextures[texIdx];
-        if (!tex) continue;
-        const elapsed = currentTime - w.startTime;
-        const duration = Math.max(0.001, w.endTime - w.startTime);
-        let lift = 0;
-        if (elapsed >= 0) {
-          const floatDur = Math.max(1.0, duration);
-          const t = Math.min(1, elapsed / floatDur);
-          lift = FLOAT_UP * t * (2 - t);
-        }
-        const dx = w.x - textStartX + texPadX;
-        const dy = texPadTop - lift;
-        this.liftCtx.drawImage(
-          tex.canvas,
-          0, 0,
-          tex.width * this.pixelRatio,
-          tex.height * this.pixelRatio,
-          dx, dy,
-          tex.width, tex.height,
-        );
-      }
-    }
-    this.liftCtx.globalCompositeOperation = "source-over";
-    this.liftCtx.restore();
-
-    // Blit onto main canvas
-    this.ctx.drawImage(
-      this.liftCanvas,
-      0, 0, physW, physH,
-      textStartX - texPadX, activeWords[0].y - texPadTop,
-      gradW, gradH,
-    );
-
-    // Emphasised words on top
     for (const { word, index } of emphasizedWords) {
       this.drawEmphasizedWord(word, activeWords, index, currentTime);
+    }
+  }
+
+  private drawLiftedLine(words: WordLayout[], currentTime: number) {
+    const scale = this.lyricLine.isBackground ? BG_FONT_SCALE : 1;
+    const { main, mainHeight } = getFonts(this.isMobile, scale);
+    const FLOAT_UP = 0.05 * mainHeight;
+    const sidePad = 6;
+    const topPad = Math.max(4, Math.ceil(mainHeight * 0.18));
+    const bottomPad = Math.max(8, Math.ceil(mainHeight * 0.32));
+    const logicalHeight = mainHeight + topPad + bottomPad;
+
+    let maxW = 0;
+    for (const w of words) if (w.width > maxW) maxW = w.width;
+    const bufW = Math.ceil((maxW + sidePad * 2) * this.pixelRatio);
+    const bufH = Math.ceil(logicalHeight * this.pixelRatio);
+    if (this.liftCanvas.width < bufW || this.liftCanvas.height < bufH) {
+      this.liftCanvas.width = Math.max(this.liftCanvas.width, bufW);
+      this.liftCanvas.height = Math.max(this.liftCanvas.height, bufH);
+    }
+
+    const isBg = !!this.lyricLine.isBackground;
+    const baseColor = getLyricsColor();
+
+    for (const w of words) {
+      const elapsed = currentTime - w.startTime;
+      const duration = Math.max(0.001, w.endTime - w.startTime);
+      const p = clamp01(elapsed / duration);
+
+      let leftColor: string;
+      let rightColor: string;
+      if (elapsed >= duration) {
+        leftColor = isBg ? `rgba(255,255,255,${BG_PAST_ALPHA})` : baseColor;
+        rightColor = leftColor;
+      } else if (elapsed < 0) {
+        leftColor = isBg ? `rgba(255,255,255,${BG_FUTURE_ALPHA})` : futureLyricsColor(0.5);
+        rightColor = leftColor;
+      } else {
+        leftColor = isBg ? `rgba(255,255,255,${BG_ACTIVE_ALPHA})` : baseColor;
+        rightColor = isBg ? `rgba(255,255,255,${BG_FUTURE_ALPHA})` : futureLyricsColor(0.5);
+      }
+
+      let lift = 0;
+      if (elapsed >= 0) {
+        const floatDur = Math.max(1.0, duration);
+        const t = Math.min(1, elapsed / floatDur);
+        lift = FLOAT_UP * t * (2 - t);
+      }
+
+      const wordPxW = Math.ceil((w.width + sidePad * 2) * this.pixelRatio);
+      this.liftCtx.clearRect(0, 0, this.liftCanvas.width, this.liftCanvas.height);
+      this.liftCtx.save();
+      this.liftCtx.scale(this.pixelRatio, this.pixelRatio);
+      this.liftCtx.font = main;
+      this.liftCtx.textBaseline = "top";
+
+      if (elapsed >= duration || elapsed < 0) {
+        this.liftCtx.fillStyle = leftColor;
+      } else {
+        const grad = this.liftCtx.createLinearGradient(sidePad, 0, sidePad + w.width, 0);
+        grad.addColorStop(Math.max(0, p), leftColor);
+        grad.addColorStop(Math.min(1, p + 0.15), rightColor);
+        this.liftCtx.fillStyle = grad;
+      }
+
+      this.liftCtx.fillText(w.text, sidePad, topPad);
+      this.liftCtx.restore();
+
+      this.ctx.drawImage(
+        this.liftCanvas,
+        0, 0, wordPxW, bufH,
+        w.x - sidePad, w.y - lift - topPad,
+        wordPxW / this.pixelRatio, logicalHeight,
+      );
     }
   }
 

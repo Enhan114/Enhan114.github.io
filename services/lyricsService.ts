@@ -52,6 +52,8 @@ export interface MatchedLyricsResult {
   matchedArtist?: string;
   matchedTitle?: string;
   matchedAlbum?: string;
+  /** NetEase song ID — once cached, future plays use fetchLyricsById directly */
+  matchedNeteaseId?: string;
 }
 
 export interface NeteaseTrackInfo {
@@ -477,7 +479,7 @@ export const searchAndMatchLyrics = async (
       if (Number.isFinite(bestDiff) && bestDiff < 15) {
         // Only use duration-matched result if it's within 15 seconds
         console.log(
-          `Duration-matched: ${bestSong.name} (${((bestSong.duration ?? 0) / 1000).toFixed(0)}s ≈ ${durationSec.toFixed(0)}s, diff ${bestDiff.toFixed(1)}s)`,
+          `Duration-matched: ${bestSong.title} (${((bestSong.duration ?? 0) / 1000).toFixed(0)}s ≈ ${durationSec.toFixed(0)}s, diff ${bestDiff.toFixed(1)}s)`,
         );
       } else {
         // No close duration match — fall back to first search result
@@ -489,13 +491,14 @@ export const searchAndMatchLyrics = async (
     }
 
     const songId = bestSong.id;
-    console.log(`Matched Song ID: ${songId} — ${bestSong.name}`);
+    console.log(`Matched Song ID: ${songId} — ${bestSong.title}`);
 
     const lyricsResult = await fetchLyricsById(songId);
     if (lyricsResult) {
       lyricsResult.matchedArtist = bestSong.artist;
       lyricsResult.matchedTitle = bestSong.title;
       lyricsResult.matchedAlbum = bestSong.album;
+      lyricsResult.matchedNeteaseId = bestSong.id;
     }
     return lyricsResult;
   } catch (error) {

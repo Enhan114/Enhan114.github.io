@@ -595,6 +595,7 @@ export const usePlayer = ({
         let cloudArtist: string | undefined;
         let cloudTitle: string | undefined;
         let cloudAlbum: string | undefined;
+        let cloudNeteaseId: string | undefined;
 
         if (isNeteaseSong && songNeteaseId) {
           const raw = await withTimeout(
@@ -619,6 +620,7 @@ export const usePlayer = ({
             cloudArtist = result.matchedArtist;
             cloudTitle = result.matchedTitle;
             cloudAlbum = result.matchedAlbum;
+            cloudNeteaseId = result.matchedNeteaseId;
           }
         }
 
@@ -636,6 +638,12 @@ export const usePlayer = ({
           if (cloudArtist) updates.artist = cloudArtist;
           if (cloudTitle) updates.title = cloudTitle;
           if (cloudAlbum) updates.album = cloudAlbum;
+          // Cache the NetEase ID so future plays use fetchLyricsById directly
+          // (same as link import — exact recording, no text search guesswork)
+          if (cloudNeteaseId) {
+            updates.neteaseId = cloudNeteaseId;
+            updates.isNetease = true;
+          }
           updateSongInQueue(songId, updates);
           markMatchSuccess();
         } else if (existingLyrics.length > 0) {
