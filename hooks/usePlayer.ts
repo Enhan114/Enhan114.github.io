@@ -879,36 +879,38 @@ export const usePlayer = ({
       };
     }
 
-    // Check in-memory cache first
-    let cachedBlob = audioResourceCache.get(fileUrl);
-    if (!cachedBlob) {
-      // Fallback to IndexedDB (persistent cache from preload)
-      try {
-        const { loadAudioBlob } = await import("../services/audioCacheDB");
-        const persisted = await loadAudioBlob(fileUrl);
-        if (persisted) {
-          audioResourceCache.set(fileUrl, persisted);
-          cachedBlob = persisted;
-        }
-      } catch { /* IndexedDB not available */ }
-    }
-    if (cachedBlob) {
-      releaseObjectUrl();
-      currentObjectUrl = URL.createObjectURL(cachedBlob);
-      setResolvedAudioSrc(currentObjectUrl);
-      setIsBuffering(false);
-      setBufferProgress(1);
-      return () => {
-        canceled = true;
-        releaseObjectUrl();
-      };
-    }
+    // Resolve audio source: in-memory → IndexedDB → network
+    (async () => {
+      let blob = audioResourceCache.get(fileUrl) ?? null;
 
-    // Use the original URL directly - let browser handle native buffering
-    releaseObjectUrl();
-    setResolvedAudioSrc(null);
-    setIsBuffering(true);
-    setBufferProgress(0);
+      if (!blob) {
+        try {
+          const { loadAudioBlob } = await import("../services/audioCacheDB");
+          const persisted = await loadAudioBlob(fileUrl);
+          if (persisted) {
+            audioResourceCache.set(fileUrl, persisted);
+            blob = persisted;
+          }
+        } catch { /* unavailable */ }
+      }
+
+      if (canceled) return;
+
+      if (blob) {
+        releaseObjectUrl();
+        currentObjectUrl = URL.createObjectURL(blob);
+        setResolvedAudioSrc(currentObjectUrl);
+        setIsBuffering(false);
+        setBufferProgress(1);
+        return;
+      }
+
+      // Network fallback
+      releaseObjectUrl();
+      setResolvedAudioSrc(null);
+      setIsBuffering(true);
+      setBufferProgress(0);
+    })();
 
     // Download in background for caching (does not affect playback)
     const cacheInBackground = async () => {

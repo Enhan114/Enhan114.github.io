@@ -136,6 +136,7 @@ const App: React.FC = () => {
 
   // Search shortcut is now handled by KeyboardShortcuts via custom bindings
 
+
   const [hasLoadedStaticMusic, setHasLoadedStaticMusic] = useState(false);
   const staticMusicLoadedRef = useRef(false);
   useEffect(() => {
