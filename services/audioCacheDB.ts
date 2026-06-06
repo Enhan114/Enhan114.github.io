@@ -7,7 +7,7 @@
  * preloaded audio survives across sessions.
  */
 
-const DB = "aura-music";
+const DB = "aura-audio-cache";
 const STORE = "audio-cache";
 
 const open = (): Promise<IDBDatabase> =>
