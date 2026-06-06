@@ -1,8 +1,5 @@
 /**
- * Cloud lyrics preloading service.
- *
- * After the first visit dialog, the user can choose to preload cloud
- * lyrics (TTML/YRC) for songs that don't have them cached yet.
+ * Preloading service for audio + lyrics cache.
  */
 
 import type { Song } from "../types";
@@ -19,38 +16,64 @@ export const markPreloadDone = () => {
   catch {}
 };
 
-/** Return songs that still need cloud lyrics matching */
-export const getUncachedSongs = (queue: Song[]): Song[] => {
-  return queue.filter((s) => s.needsLyricsMatch !== false && !s.isNetease);
+/** Return songs that may benefit from preloading */
+export const getPreloadableSongs = (queue: Song[]): Song[] => {
+  return queue.filter((s) =>
+    s.fileUrl && !s.fileUrl.startsWith("blob:") && s.source !== "local",
+  );
 };
-
-import type { MatchedLyricsResult } from "./lyricsService";
 
 export interface PreloadProgress {
   done: number;
   total: number;
   current: string;
+  currentType: "audio" | "lyrics";
 }
 
-export const preloadLyrics = async (
+export type SongProgressCallback = (id: string, type: "audio" | "lyrics", status: "loading" | "done" | "error") => void;
+
+export const preloadAll = async (
   songs: Song[],
   onProgress: (p: PreloadProgress) => void,
-  onSongDone: (id: string, result: MatchedLyricsResult | null) => void,
+  onSongProgress: SongProgressCallback,
 ): Promise<void> => {
-  // Dynamic import to avoid circular deps at module load time
+  const { audioResourceCache } = await import("./cache");
   const { searchAndMatchLyrics } = await import("./lyricsService");
 
   let done = 0;
+  const totalSteps = songs.length * 2; // audio + lyrics per song
+
   for (const song of songs) {
-    onProgress({ done, total: songs.length, current: song.title });
+    // Step 1: Preload audio
+    onProgress({ done, total: totalSteps, current: song.title, currentType: "audio" });
+    onSongProgress(song.id, "audio", "loading");
     try {
-      const result = await searchAndMatchLyrics(song.title, song.artist);
-      onSongDone(song.id, result);
+      const cachedAudio = audioResourceCache.get(song.fileUrl);
+      if (!cachedAudio) {
+        const response = await fetch(song.fileUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          audioResourceCache.set(song.fileUrl, blob);
+        }
+      }
+      onSongProgress(song.id, "audio", "done");
     } catch {
-      onSongDone(song.id, null);
+      onSongProgress(song.id, "audio", "error");
+    }
+    done++;
+
+    // Step 2: Preload lyrics
+    onProgress({ done, total: totalSteps, current: song.title, currentType: "lyrics" });
+    onSongProgress(song.id, "lyrics", "loading");
+    try {
+      await searchAndMatchLyrics(song.title, song.artist);
+      onSongProgress(song.id, "lyrics", "done");
+    } catch {
+      onSongProgress(song.id, "lyrics", "error");
     }
     done++;
   }
-  onProgress({ done, total: songs.length, current: "" });
+
+  onProgress({ done, total: totalSteps, current: "", currentType: "lyrics" });
   markPreloadDone();
 };
