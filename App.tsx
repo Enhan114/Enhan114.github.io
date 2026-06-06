@@ -405,6 +405,12 @@ const App: React.FC = () => {
         isOpen={showShortcutSettings}
         onClose={() => setShowShortcutSettings(false)}
         onBindingsChanged={() => {}}
+        queue={playlist.queue}
+        onUnblock={(ids) => {
+          // Re-add unblocked songs to the end of the playlist
+          const songs = playlist.queue.filter((s) => ids.includes(s.id));
+          if (songs.length > 0) playlist.addSongs(songs);
+        }}
       />
 
       {/* Search Modal - Always rendered to preserve state, visibility handled internally */}
