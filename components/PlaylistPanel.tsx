@@ -790,7 +790,7 @@ const PlaylistPanel = React.memo(({
 
                                                 {/* Block overlay — show in block mode on hover */}
                                                 {isBlockMode && (
-                                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40 rounded-xl">
+                                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40 rounded-xl pointer-events-none">
                                                         <BlockIcon className="w-5 h-5 text-red-400" />
                                                     </div>
                                                 )}

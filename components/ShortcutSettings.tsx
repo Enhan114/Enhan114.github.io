@@ -427,8 +427,6 @@ const BlocklistSection: React.FC<{
     if (onUnblock && removed.length > 0) onUnblock(removed);
   };
 
-  if (blockedSongs.length === 0 && blockedIds.length === 0) return null;
-
   return (
     <div className="mt-4 pt-4 border-t border-white/5">
       <h3 className="text-xs font-semibold uppercase tracking-widest text-white/30 mb-2 px-1">
