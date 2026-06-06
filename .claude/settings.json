@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m 'Feat: real-time audio download progress in preload dialog *)",
+      "Bash(git commit -m 'Fix: GitHub Actions deploy path dist → docs *)",
+      "Bash(git commit -m 'Build: update docs for latest changes *)",
+      "Bash(git commit *)"
+    ]
+  }
+}

@@ -9,99 +9,226 @@ import {
 interface PreloadDialogProps {
   queue: Song[];
   onLyricsReady: (id: string, lyrics: import("../types").LyricLine[]) => void;
+  forceShow?: boolean;
+  onClose?: () => void;
 }
 
-// ── Cover thumbnail (matching PlaylistPanel Art exactly) ──
-const Art: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
-  if (!src) {
-    return (
-      <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-gray-800 shadow-sm flex items-center justify-center">
-        <span className="text-[10px] text-white/20">♪</span>
-      </div>
-    );
-  }
+// ── Helpers ────────────────────────────────
+
+const formatSize = (bytes: number) => {
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+};
+
+const formatSpeed = (bytesPerSec: number) => {
+  if (bytesPerSec <= 0) return "";
+  if (bytesPerSec >= 1048576) return `${(bytesPerSec / 1048576).toFixed(1)} MB/s`;
+  return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
+};
+
+// ── Cover thumbnail ────────────────────────
+
+const Art: React.FC<{ src?: string }> = ({ src }) => {
+  if (!src) return (
+    <div className="h-9 w-9 shrink-0 rounded-lg border border-white/5 bg-gray-800 flex items-center justify-center">
+      <span className="text-[9px] text-white/20">♪</span>
+    </div>
+  );
   return (
-    <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-gray-800 shadow-sm">
-      <img src={src} alt={alt} loading="lazy" decoding="async"
-        className="h-full w-full object-cover transition-opacity duration-500" />
+    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-gray-800 shadow-sm">
+      <img src={src} loading="lazy" className="h-full w-full object-cover" />
     </div>
   );
 };
 
-// ── Main component ──
-const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady }) => {
+// ── Song item for list ─────────────────────
+
+interface SongItemProps {
+  song: Song;
+  side: "cached" | "uncached";
+  onAction: (id: string) => void;
+  loading?: boolean;
+  state?: { audio: string; lyrics: string; audioLoaded: number; audioTotal: number; audioSpeed: number };
+  accent?: string;
+}
+
+const SongItem: React.FC<SongItemProps> = ({ song, side, onAction, loading, state, accent }) => {
+  const pct = state && state.audioTotal > 0 ? Math.round((state.audioLoaded / state.audioTotal) * 100) : 0;
+  const downloading = state?.audio === "loading";
+  const audioSize = state && state.audioTotal > 0
+    ? `${formatSize(state.audioLoaded)} / ${formatSize(state.audioTotal)}`
+    : "";
+  const speedStr = state && state.audioSpeed > 0 ? formatSpeed(state.audioSpeed) : "";
+
+  return (
+    <div className={`group flex items-center gap-2 p-1.5 rounded-xl transition-all duration-200 ${loading ? 'opacity-70' : ''}`}>
+      {/* Cover */}
+      <Art src={song.coverUrl} />
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-semibold truncate leading-tight text-white/80">{song.title}</div>
+        <div className="text-[11px] text-white/40 truncate">{song.artist}</div>
+        {downloading && state.audioTotal > 0 && (
+          <div className="mt-0.5">
+            <div className="h-[2px] bg-white/10 rounded-full overflow-hidden w-full max-w-[140px]">
+              <div className="h-full bg-white/50 rounded-full transition-all duration-200" style={{ width: `${pct}%` }} />
+            </div>
+            <div className="text-[9px] text-white/25 mt-0.5">
+              {pct}% · {audioSize}{speedStr ? ` · ${speedStr}` : ""}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Action button */}
+      <button
+        onClick={() => onAction(song.id)}
+        disabled={loading}
+        className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all
+          ${side === "cached"
+            ? "text-white/20 hover:text-red-400 hover:bg-red-400/10"
+            : downloading
+              ? "text-white/20 cursor-default"
+              : "text-white/30 hover:text-white hover:bg-white/10"}`}
+        title={side === "cached" ? "删除缓存" : "下载"}
+      >
+        {side === "cached" ? (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2L10 10M2 10L10 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+        ) : downloading ? (
+          <div className="w-3 h-3 border border-white/30 border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v6M3 6l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        )}
+      </button>
+    </div>
+  );
+};
+
+// ── Main component ─────────────────────────
+
+const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, forceShow, onClose }) => {
   const [show, setShow] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<PreloadProgress | null>(null);
-  const [songState, setSongState] = useState<Map<string, { audio: string; lyrics: string }>>(new Map());
+  const [songState, setSongState] = useState<Map<string, {
+    audio: string; lyrics: string;
+    audioLoaded: number; audioTotal: number; audioSpeed: number;
+  }>>(new Map());
 
-  const songs = getPreloadableSongs(queue);
+  // Split songs into cached / uncached
+  const allSongs = getPreloadableSongs(queue);
+  const cachedIds = new Set<string>();
+  const uncachedIds = new Set<string>();
 
+  for (const s of allSongs) {
+    const st = songState.get(s.id);
+    const audioDone = st?.audio === "done";
+    const lyricsDone = s.needsLyricsMatch === false || st?.lyrics === "done";
+    if (audioDone && lyricsDone) cachedIds.add(s.id);
+    else uncachedIds.add(s.id);
+  }
+
+  // First visit: pre-populate cached based on needsLyricsMatch
   useEffect(() => {
-    if (songs.length > 0 && !isPreloadDone()) {
-      setShow(true);
-      setSelected(new Set(songs.map(s => s.id)));
-      requestAnimationFrame(() => setVisible(true));
+    for (const s of allSongs) {
+      if (s.needsLyricsMatch === false) {
+        setSongState(prev => {
+          if (prev.has(s.id)) return prev;
+          const n = new Map(prev);
+          n.set(s.id, { audio: "done", lyrics: "done", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 });
+          return n;
+        });
+      }
     }
   }, [queue.length]);
+
+  // Open logic
+  useEffect(() => {
+    if (allSongs.length > 0 && (!isPreloadDone() || forceShow)) {
+      setShow(true);
+      requestAnimationFrame(() => setVisible(true));
+    }
+  }, [queue.length, forceShow]);
+
+  useEffect(() => {
+    if (!forceShow) {
+      setVisible(false);
+      const t = setTimeout(() => setShow(false), 300);
+      return () => clearTimeout(t);
+    }
+  }, [forceShow]);
 
   const close = useCallback(() => {
     markPreloadDone();
     setVisible(false);
-    setTimeout(() => setShow(false), 300);
-  }, []);
+    setTimeout(() => {
+      setShow(false);
+      if (forceShow && onClose) onClose();
+    }, 300);
+  }, [forceShow, onClose]);
 
-  const toggle = (id: string) => {
-    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  };
-  const selectAll = () => setSelected(new Set(songs.map(s => s.id)));
-  const selectNone = () => setSelected(new Set());
+  // ── Actions ─────────────────────────────────
 
-  const startPreload = async () => {
+  const downloadBatch = async (ids: string[]) => {
     setLoading(true);
-    const toLoad = songs.filter(s => selected.has(s.id));
+    const toLoad = allSongs.filter(s => ids.includes(s.id));
     await preloadAll(
       toLoad,
       (p) => setProgress({ ...p }),
-      (id, type, status) => {
+      (id, type, status, fp) => {
         setSongState(prev => {
           const n = new Map(prev);
-          const cur = n.get(id) || { audio: "", lyrics: "" };
-          n.set(id, { ...cur, [type]: status });
+          const cur = n.get(id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 };
+          const entry = { ...cur, [type]: status };
+          if (fp) { entry.audioLoaded = fp.loaded; entry.audioTotal = fp.total; entry.audioSpeed = fp.speed; }
+          n.set(id, entry);
           return n;
         });
-        if (type === "lyrics" && status === "done") {
-          // The lyrics were cached server-side; no need to update queue here
-        }
       },
     );
     setLoading(false);
-    setTimeout(() => close(), 1000);
+  };
+
+  const deleteCached = (id: string) => {
+    setSongState(prev => {
+      const n = new Map(prev);
+      n.delete(id);
+      return n;
+    });
+    // Also clear the lyrics flag so the song goes back to uncached
+    onLyricsReady(id, []);
+  };
+
+  const deleteAllCached = () => {
+    for (const id of cachedIds) {
+      deleteCached(id);
+    }
   };
 
   if (!show) return null;
 
+  const cachedList = allSongs.filter(s => cachedIds.has(s.id));
+  const uncachedList = allSongs.filter(s => uncachedIds.has(s.id));
+
   return createPortal(
     <div className="fixed inset-0 z-[10001] flex items-center justify-center px-4 select-none font-sans">
-      {/* Backdrop */}
       <div
         className={`absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}
         onClick={loading ? undefined : close}
       />
-
-      {/* Panel */}
       <div
-        className={`relative w-full max-w-md max-h-[80vh] flex flex-col bg-black/50 backdrop-blur-3xl saturate-150 border border-white/10 rounded-[28px] shadow-[0_30px_80px_rgba(0,0,0,0.5)] text-white transition-all duration-300 ${visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
+        className={`relative w-full max-w-2xl max-h-[80vh] flex flex-col bg-black/50 backdrop-blur-3xl saturate-150 border border-white/10 rounded-[28px] shadow-[0_30px_80px_rgba(0,0,0,0.5)] text-white transition-all duration-300 ${visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
       >
         {/* Header */}
-        <div className="shrink-0 p-6 pb-3">
+        <div className="shrink-0 p-5 pb-2">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h2 className="text-lg font-bold tracking-tight">预加载缓存</h2>
+              <h2 className="text-lg font-bold tracking-tight">缓存管理</h2>
               <p className="text-white/40 text-xs mt-0.5">
-                {loading ? "正在下载音频和歌词..." : "选择歌曲提前下载，离线也能秒开"}
+                {loading ? "下载中..." : "左侧已缓存 · 右侧待下载 · 实时同步"}
               </p>
             </div>
             <button onClick={close} disabled={loading}
@@ -111,17 +238,13 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady }) =
               </svg>
             </button>
           </div>
-
-          {/* Progress bar */}
           {loading && progress && (
-            <div className="mb-2">
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-white/50 truncate mr-2">
-                  {progress.currentType === "audio" ? "🎵" : "📝"} {progress.current}
-                </span>
-                <span className="text-white/30 shrink-0">{progress.done}/{progress.total}</span>
+            <div className="mb-1">
+              <div className="flex items-center justify-between text-[10px] mb-0.5">
+                <span className="text-white/40">{progress.currentType === "audio" ? "🎵" : "📝"} {progress.current}</span>
+                <span className="text-white/25">{progress.done}/{progress.total}</span>
               </div>
-              <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-[2px] bg-white/10 rounded-full overflow-hidden">
                 <div className="h-full bg-white/50 rounded-full transition-all duration-300"
                   style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
               </div>
@@ -129,118 +252,73 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady }) =
           )}
         </div>
 
-        {/* Song list — matching PlaylistPanel style */}
-        <div className="flex-1 overflow-y-auto playlist-scrollbar px-2 py-2 min-h-0">
-          <div className="space-y-1">
-            {songs.map(song => {
-              const isSel = selected.has(song.id);
-              const st = songState.get(song.id);
-              const audioDone = st?.audio === "done";
-              const lyricsDone = st?.lyrics === "done";
-              const isLoading = st?.audio === "loading" || st?.lyrics === "loading";
-
-              return (
-                <div
-                  key={song.id}
-                  onClick={() => !loading && toggle(song.id)}
-                  className={`group flex items-center gap-3 p-2 mx-1 rounded-2xl cursor-pointer transition-all duration-200
-                    ${isSel ? 'bg-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]' : 'hover:bg-white/5'}
-                    ${loading && !isSel ? 'opacity-40' : ''}`}
-                  style={{ height: '66px', touchAction: 'manipulation' }}
-                >
-                  {/* Checkbox */}
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ml-1
-                    ${isSel ? 'border-transparent' : 'border-white/20 group-hover:border-white/40'}`}
-                    style={{ backgroundColor: isSel ? '#fff' : 'transparent' }}>
-                    {isSel && (
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                        <path d="M2 5L4 7L8 3" stroke="#000" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
-                  </div>
-
-                  {/* Cover */}
-                  <div className="relative">
-                    <Art src={song.coverUrl} alt={song.title} />
-                    {/* Loading equalizer overlay */}
-                    {isLoading && (
-                      <div className="absolute inset-0 flex items-center justify-center gap-[3px] bg-black/30 rounded-lg">
-                        <div className="w-[2px] bg-white/80 rounded-full animate-[eq-bounce_1s_ease-in-out_infinite]"
-                          style={{ height: '8px' }} />
-                        <div className="w-[2px] bg-white/80 rounded-full animate-[eq-bounce_1s_ease-in-out_infinite_0.2s]"
-                          style={{ height: '14px' }} />
-                        <div className="w-[2px] bg-white/80 rounded-full animate-[eq-bounce_1s_ease-in-out_infinite_0.4s]"
-                          style={{ height: '10px' }} />
-                      </div>
-                    )}
-                    {/* Done check */}
-                    {audioDone && lyricsDone && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                          <circle cx="8" cy="8" r="7" fill="rgba(255,255,255,0.15)"/>
-                          <path d="M5 8L7 10L11 6" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Text */}
-                  <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
-                    <div className="text-[15px] font-semibold truncate leading-tight"
-                      style={{ color: isSel ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.7)' }}>
-                      {song.title}
-                    </div>
-                    <div className="text-[13px] text-white/50 truncate font-medium">
-                      {song.artist}
-                    </div>
-                  </div>
-
-                  {/* Status indicator */}
-                  <div className="shrink-0 flex items-center gap-1">
-                    <span className={`w-1.5 h-1.5 rounded-full ${audioDone ? 'bg-green-400/60' : st?.audio === 'error' ? 'bg-red-400/40' : 'bg-white/10'}`} />
-                    <span className={`w-1.5 h-1.5 rounded-full ${lyricsDone ? 'bg-green-400/60' : st?.lyrics === 'error' ? 'bg-red-400/40' : 'bg-white/10'}`} />
-                  </div>
+        {/* Two-column layout */}
+        <div className="flex-1 flex min-h-0 gap-1 px-3 pb-3">
+          {/* Left: Cached */}
+          <div className="flex-1 flex flex-col min-w-0 rounded-2xl bg-white/[0.03] border border-white/5 overflow-hidden">
+            <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-white/5">
+              <span className="text-xs font-semibold text-white/50">已缓存 ({cachedList.length})</span>
+              {cachedList.length > 0 && (
+                <button onClick={deleteAllCached} disabled={loading}
+                  className="text-[10px] text-red-400/50 hover:text-red-400 transition-colors">
+                  全部删除
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto playlist-scrollbar px-2 py-1">
+              {cachedList.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-[11px] text-white/15 italic">
+                  暂无缓存
                 </div>
-              );
-            })}
+              ) : (
+                cachedList.map(s => (
+                  <SongItem key={s.id} song={s} side="cached"
+                    onAction={deleteCached} loading={loading} state={songState.get(s.id)} />
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Right: Uncached */}
+          <div className="flex-1 flex flex-col min-w-0 rounded-2xl bg-white/[0.03] border border-white/5 overflow-hidden">
+            <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-white/5">
+              <span className="text-xs font-semibold text-white/50">未缓存 ({uncachedList.length})</span>
+              {uncachedList.length > 0 && (
+                <button onClick={() => downloadBatch(uncachedList.map(s => s.id))} disabled={loading}
+                  className={`text-[10px] transition-colors ${loading ? 'text-white/20' : 'text-white/40 hover:text-white'}`}>
+                  {loading ? "下载中..." : "全部下载"}
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto playlist-scrollbar px-2 py-1">
+              {uncachedList.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-[11px] text-white/15 italic">
+                  全部已缓存 ✅
+                </div>
+              ) : (
+                uncachedList.map(s => (
+                  <SongItem key={s.id} song={s} side="uncached"
+                    onAction={(id) => downloadBatch([id])} loading={loading} state={songState.get(s.id)} />
+                ))
+              )}
+            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 p-6 pt-3">
-          {!loading && (
-            <div className="flex items-center gap-2 mb-3">
-              <button onClick={selectAll} className="text-xs text-white/40 hover:text-white/70 transition-colors">全选</button>
-              <button onClick={selectNone} className="text-xs text-white/30 hover:text-white/50 transition-colors">取消</button>
-              <span className="text-xs text-white/20 ml-auto">{selected.size}/{songs.length}</span>
-            </div>
-          )}
-          <button onClick={startPreload} disabled={loading || selected.size === 0}
-            className="w-full py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 text-white/80 font-medium transition-all text-sm disabled:opacity-30 disabled:cursor-not-allowed">
-            {loading ? "预加载中..." : `预加载选中 (${selected.size}) 首 · 音频 + 歌词`}
-          </button>
+        <div className="shrink-0 p-4 pt-1 flex items-center justify-center">
           <button onClick={close} disabled={loading}
-            className="w-full py-2 text-xs text-white/25 hover:text-white/40 transition-colors mt-1 disabled:opacity-10">
-            跳过，稍后再说
+            className="py-2 px-6 text-xs text-white/25 hover:text-white/40 transition-colors disabled:opacity-10">
+            关闭
           </button>
         </div>
       </div>
 
-      {/* eq-bounce keyframe (same as PlaylistPanel) */}
       <style>{`
-        @keyframes eq-bounce {
-          0%, 100% { transform: scaleY(0.4); opacity: 0.8; }
-          50% { transform: scaleY(1); opacity: 1; }
-        }
-        .playlist-scrollbar {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(255,255,255,0.15) transparent;
-        }
-        .playlist-scrollbar::-webkit-scrollbar { width: 4px; }
-        .playlist-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.15);
-          border-radius: 999px;
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .playlist-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent; }
+        .playlist-scrollbar::-webkit-scrollbar { width: 3px; }
+        .playlist-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
       `}</style>
     </div>,
     document.body,
