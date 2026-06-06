@@ -40,7 +40,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
   const [progress, setProgress] = useState<PreloadProgress | null>(null);
   const [songState, setSongState] = useState<Map<string, {
     audio: string; lyrics: string;
-    audioLoaded: number; audioTotal: number;
+    audioLoaded: number; audioTotal: number; audioSpeed: number;
   }>>(new Map());
 
   const songs = getPreloadableSongs(queue);
@@ -87,11 +87,12 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
       (id, type, status, fileProgress) => {
         setSongState(prev => {
           const n = new Map(prev);
-          const cur = n.get(id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0 };
+          const cur = n.get(id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 };
           const entry = { ...cur, [type]: status };
           if (fileProgress) {
             entry.audioLoaded = fileProgress.loaded;
             entry.audioTotal = fileProgress.total;
+            entry.audioSpeed = fileProgress.speed;
           }
           n.set(id, entry);
           return n;
@@ -168,6 +169,11 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
               const audioSize = st && st.audioTotal > 0
                 ? `${(st.audioLoaded / 1048576).toFixed(1)} / ${(st.audioTotal / 1048576).toFixed(1)} MB`
                 : "";
+              const speedStr = st && st.audioSpeed > 0
+                ? st.audioSpeed >= 1048576
+                  ? `${(st.audioSpeed / 1048576).toFixed(1)} MB/s`
+                  : `${(st.audioSpeed / 1024).toFixed(0)} KB/s`
+                : "";
 
               return (
                 <div
@@ -230,7 +236,9 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
                           <div className="h-full bg-white/50 rounded-full transition-all duration-200"
                             style={{ width: `${audioPct}%` }} />
                         </div>
-                        <div className="text-[10px] text-white/30 mt-0.5">{audioPct}% {audioSize}</div>
+                        <div className="text-[10px] text-white/30 mt-0.5">
+                          {audioPct}% · {audioSize}{speedStr ? ` · ${speedStr}` : ""}
+                        </div>
                       </div>
                     )}
                   </div>

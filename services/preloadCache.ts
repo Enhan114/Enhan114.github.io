@@ -31,6 +31,8 @@ export interface SongFileProgress {
   loaded: number;
   /** Total bytes (audio only), 0 if unknown */
   total: number;
+  /** Download speed in bytes/sec, 0 if not yet known */
+  speed: number;
 }
 
 export type SongProgressCallback = (
@@ -55,29 +57,42 @@ async function fetchAudioWithProgress(
   const reader = response.body?.getReader();
   if (!reader || total <= 0) {
     // Fallback: no streaming support or unknown size
-    onFileProgress({ loaded: 0, total });
+    onFileProgress({ loaded: 0, total: 0, speed: 0 });
     const blob = await response.blob();
     cache.set(url, blob);
-    onFileProgress({ loaded: blob.size, total: blob.size });
+    onFileProgress({ loaded: blob.size, total: blob.size, speed: 0 });
     return;
   }
 
-  // Stream with progress
+  // Stream with progress + speed tracking
   const chunks: Uint8Array[] = [];
   let loaded = 0;
-  onFileProgress({ loaded: 0, total });
+  let lastTime = performance.now();
+  let lastLoaded = 0;
+  let speed = 0;
+
+  onFileProgress({ loaded: 0, total, speed: 0 });
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     chunks.push(value);
     loaded += value.length;
-    onFileProgress({ loaded, total });
+
+    // Update speed every ~200ms to avoid jitter
+    const now = performance.now();
+    const elapsed = now - lastTime;
+    if (elapsed >= 200) {
+      speed = ((loaded - lastLoaded) / elapsed) * 1000; // bytes/sec
+      lastTime = now;
+      lastLoaded = loaded;
+    }
+    onFileProgress({ loaded, total, speed });
   }
 
   const blob = new Blob(chunks);
   cache.set(url, blob);
-  onFileProgress({ loaded, total });
+  onFileProgress({ loaded: total, total, speed: 0 });
 }
 
 export const preloadAll = async (
