@@ -62,6 +62,42 @@ export const hasAudioBlob = async (key: string): Promise<boolean> => {
   return (count ?? 0) > 0;
 };
 
+/**
+ * Batch-check multiple keys in a single DB connection.
+ * Much faster than calling hasAudioBlob for each key individually.
+ * Returns a Set of keys that exist in the store.
+ */
+export const batchHasAudioBlobs = async (keys: string[]): Promise<Set<string>> => {
+  const found = new Set<string>();
+  if (keys.length === 0) return found;
+  try {
+    const db = await open();
+    const tx = db.transaction(STORE, "readonly");
+    const store = tx.objectStore(STORE);
+    // Open a cursor — more efficient than 32 individual count() calls
+    await new Promise<void>((resolve, reject) => {
+      const req = store.openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          if (keys.includes(cursor.key as string)) {
+            found.add(cursor.key as string);
+          }
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
+    await new Promise<void>((r) => { tx.oncomplete = () => r(); });
+    db.close();
+  } catch (e) {
+    console.warn("[audioCacheDB] batch check failed:", e);
+  }
+  return found;
+};
+
 /** List all cached audio keys */
 export const listAudioKeys = async (): Promise<string[]> => {
   const keys = await run("readonly", (store) => store.getAllKeys());

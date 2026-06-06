@@ -134,14 +134,14 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
     else uncachedIds.add(s.id);
   }
 
-  // Verify actual cache state from IndexedDB (not just needsLyricsMatch)
+  // Verify actual cache state from IndexedDB in a single DB connection.
   useEffect(() => {
     if (allSongs.length === 0) { setCheckingCache(false); return; }
     setCheckingCache(true);
-    import("../services/audioCacheDB").then(({ hasAudioBlob }) => {
-      Promise.all(allSongs.map((s) =>
-        hasAudioBlob(s.fileUrl).then((hasAudio) => {
-          if (hasAudio && s.needsLyricsMatch === false) {
+    import("../services/audioCacheDB").then(({ batchHasAudioBlobs }) =>
+      batchHasAudioBlobs(allSongs.map(s => s.fileUrl)).then((found) => {
+        allSongs.forEach((s) => {
+          if (found.has(s.fileUrl) && s.needsLyricsMatch === false) {
             setSongState(prev => {
               if (prev.has(s.id)) return prev;
               const n = new Map(prev);
@@ -149,9 +149,9 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
               return n;
             });
           }
-        }).catch(() => {})
-      )).finally(() => setCheckingCache(false));
-    }).catch(() => setCheckingCache(false));
+        });
+      }).catch(() => {})
+    ).catch(() => {}).finally(() => setCheckingCache(false));
   }, [queue.length]);
 
   // Open logic
@@ -187,7 +187,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
     await preloadAll(
       toLoad,
       (p) => setProgress({ ...p }),
-      (id, type, status, fp) => {
+      (id, type, status, fp, lyricsData) => {
         setSongState(prev => {
           const n = new Map(prev);
           const cur = n.get(id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 };
@@ -196,6 +196,9 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
           n.set(id, entry);
           return n;
         });
+        if (lyricsData && lyricsData.length > 0) {
+          onLyricsReady(id, lyricsData);
+        }
       },
     );
     setLoading(false);
