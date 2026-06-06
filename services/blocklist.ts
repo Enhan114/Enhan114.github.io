@@ -12,6 +12,10 @@ export interface BlockedSongInfo {
   id: string;
   title: string;
   artist: string;
+  fileUrl: string;
+  coverUrl?: string;
+  source?: string;
+  origin?: string;
 }
 
 const load = (): BlockedSongInfo[] => {
@@ -48,10 +52,10 @@ const cache = (): BlockedSongInfo[] => {
 export const isBlocked = (id: string): boolean =>
   cache().some((s) => s.id === id);
 
-export const blockSong = (id: string, title = "", artist = "") => {
+export const blockSong = (info: BlockedSongInfo) => {
   const list = cache();
-  if (!list.some((s) => s.id === id)) {
-    list.push({ id, title, artist });
+  if (!list.some((s) => s.id === info.id)) {
+    list.push(info);
     save(list);
   }
 };
@@ -68,13 +72,13 @@ export const getBlockedSongs = (): BlockedSongInfo[] => [...cache()];
 
 export const getBlockedIds = (): string[] => cache().map((s) => s.id);
 
-/** Bulk unblock — returns the unblocked IDs so caller can re-add them */
-export const unblockSongs = (ids: string[]): string[] => {
+/** Bulk unblock — returns full song info so caller can re-add them */
+export const unblockSongs = (ids: string[]): BlockedSongInfo[] => {
   const idSet = new Set(ids);
-  const unblocked: string[] = [];
+  const unblocked: BlockedSongInfo[] = [];
   const remaining = cache().filter((s) => {
     if (idSet.has(s.id)) {
-      unblocked.push(s.id);
+      unblocked.push(s);
       return false;
     }
     return true;

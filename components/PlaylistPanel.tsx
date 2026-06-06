@@ -750,7 +750,7 @@ const PlaylistPanel = React.memo(({
                                                 console.log('[blocklist] click', { isBlockMode, isEditing, songId: song.id, skipRef: skipRef.current });
                                                 if (skipRef.current) return;
                                                 if (isEditing) toggleSelection(song.id);
-                                                else if (isBlockMode) { console.log('[blocklist] blocking song', song.id); blockSong(song.id, song.title, song.artist); onRemove([song.id]); }
+                                                else if (isBlockMode) { console.log('[blocklist] blocking song', song.id); blockSong({ id: song.id, title: song.title, artist: song.artist, fileUrl: song.fileUrl, coverUrl: song.coverUrl, source: song.source, origin: song.origin }); onRemove([song.id]); }
                                                 else onPlay(index);
                                             }}
                                             className={`

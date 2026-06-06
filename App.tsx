@@ -405,10 +405,20 @@ const App: React.FC = () => {
         isOpen={showShortcutSettings}
         onClose={() => setShowShortcutSettings(false)}
         onBindingsChanged={() => {}}
-        onUnblock={(ids) => {
-          // Re-add unblocked songs to the end of the playlist
-          const songs = playlist.queue.filter((s) => ids.includes(s.id));
-          if (songs.length > 0) playlist.addSongs(songs);
+        onUnblock={(infos) => {
+          const songs: Song[] = infos.map((info) => ({
+            id: info.id,
+            title: info.title,
+            artist: info.artist,
+            fileUrl: info.fileUrl,
+            coverUrl: info.coverUrl,
+            source: (info.source as Song["source"]) || "remote",
+            origin: info.origin || info.fileUrl,
+            lyrics: [],
+            needsLyricsMatch: true,
+            colors: [],
+          }));
+          playlist.addSongs(songs);
         }}
       />
 

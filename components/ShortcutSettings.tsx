@@ -22,7 +22,7 @@ interface ShortcutSettingsProps {
   isOpen: boolean;
   onClose: () => void;
   onBindingsChanged: (bindings: ShortcutBinding[]) => void;
-  onUnblock?: (ids: string[]) => void;
+  onUnblock?: (songs: BlockedSongInfo[]) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -398,7 +398,7 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
 // ---------------------------------------------------------------------------
 
 const BlocklistSection: React.FC<{
-  onUnblock?: (ids: string[]) => void;
+  onUnblock?: (songs: BlockedSongInfo[]) => void;
 }> = ({ onUnblock }) => {
   const [blockedSongs, setBlockedSongs] = useState<BlockedSongInfo[]>(() => getBlockedSongs());
   const [selected, setSelected] = useState<Set<string>>(new Set());
