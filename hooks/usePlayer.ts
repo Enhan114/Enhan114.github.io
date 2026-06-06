@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Song, PlayState, PlayMode } from "../types";
+import { Song, PlayState, PlayMode, LyricLine as LyricLineType } from "../types";
 import { extractColors, shuffleArray } from "../services/utils";
 import { parseLyrics } from "../services/lyrics";
 import {
@@ -431,15 +431,83 @@ export const usePlayer = ({
     [currentIndex, setIndex],
   );
 
+  /**
+   * Merge cloud lyrics with local lyrics.
+   *
+   * The local LRC has line timing that matches the actual audio file.
+   * TTML/YRC has per-word timing that may come from a different
+   * recording and therefore have slightly different line boundaries.
+   *
+   * Strategy: keep local LRC line timing, graft TTML/YRC per-word
+   * data onto matching lines.  If no local lyrics exist, use TTML
+   * directly.
+   */
   const mergeLyricsWithMetadata = useCallback(
-    (result: MatchedLyricsResult) => {
+    (result: MatchedLyricsResult, existingLyrics: LyricLineType[]) => {
       const hasTtml = Boolean(result.ttml && result.ttml.trim());
 
-      const parsed = hasTtml
+      const cloudParsed = hasTtml
         ? parseLyrics(result.ttml!)
         : parseLyrics(result.lrc ?? "", result.tLrc, {
             yrcContent: result.yrc,
           });
+
+      // If there are no local lyrics, use cloud data directly
+      if (existingLyrics.length === 0) {
+        const metadataCount = result.metadata.length;
+        const metadataLines = result.metadata.map((text, idx) => ({
+          time: -0.1 * (metadataCount - idx),
+          text,
+          isMetadata: true,
+        }));
+        return [...metadataLines, ...cloudParsed].sort((a, b) => a.time - b.time);
+      }
+
+      // Build a text→TTML line map for word-data grafting
+      const ttmlByText = new Map<string, (typeof cloudParsed)[0]>();
+      for (const cl of cloudParsed) {
+        if (cl.isMetadata || cl.isInterlude || cl.isBackground) continue;
+        if (!cl.words?.length) continue;
+        const key = cl.text.replace(/\s+/g, "").toLowerCase();
+        ttmlByText.set(key, cl);
+      }
+
+      // Merge: keep local line timing, graft TTML word data
+      const merged = existingLyrics.map((local) => {
+        if (local.isMetadata || local.isInterlude || local.isBackground) {
+          return local;
+        }
+        const key = local.text.replace(/\s+/g, "").toLowerCase();
+        const match = ttmlByText.get(key);
+        if (match && match.words && match.words.length > 0) {
+          // Graft TTML word timing onto local line timing
+          // Map TTML word times into the local line's time window
+          const localStart = local.time;
+          const localEnd = local.endTime && local.endTime > localStart
+            ? local.endTime
+            : localStart + 4;
+          const cloudStart = match.time;
+          const cloudEnd = match.endTime && match.endTime > cloudStart
+            ? match.endTime
+            : cloudStart + 4;
+          const cloudDuration = Math.max(0.01, cloudEnd - cloudStart);
+          const localDuration = Math.max(0.01, localEnd - localStart);
+
+          return {
+            ...local,
+            words: match.words.map((w) => ({
+              ...w,
+              startTime:
+                localStart +
+                ((w.startTime - cloudStart) / cloudDuration) * localDuration,
+              endTime:
+                localStart +
+                ((w.endTime - cloudStart) / cloudDuration) * localDuration,
+            })),
+          };
+        }
+        return local;
+      });
 
       const metadataCount = result.metadata.length;
       const metadataLines = result.metadata.map((text, idx) => ({
@@ -447,8 +515,7 @@ export const usePlayer = ({
         text,
         isMetadata: true,
       }));
-
-      return [...metadataLines, ...parsed].sort((a, b) => a.time - b.time);
+      return [...metadataLines, ...merged].sort((a, b) => a.time - b.time);
     },
     [],
   );
@@ -525,7 +592,7 @@ export const usePlayer = ({
           );
           if (cancelled) return;
           if (raw) {
-            merged = mergeLyricsWithMetadata(raw);
+            merged = mergeLyricsWithMetadata(raw, existingLyrics);
           }
         } else {
           const result = await withTimeout(
@@ -534,7 +601,7 @@ export const usePlayer = ({
           );
           if (cancelled) return;
           if (result) {
-            merged = mergeLyricsWithMetadata(result);
+            merged = mergeLyricsWithMetadata(result, existingLyrics);
           }
         }
 
