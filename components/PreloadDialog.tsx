@@ -9,6 +9,9 @@ import {
 interface PreloadDialogProps {
   queue: Song[];
   onLyricsReady: (id: string, lyrics: import("../types").LyricLine[]) => void;
+  /** Force the dialog to open even if preload has been done before */
+  forceShow?: boolean;
+  onClose?: () => void;
 }
 
 // ── Cover thumbnail (matching PlaylistPanel Art exactly) ──
@@ -29,7 +32,7 @@ const Art: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
 };
 
 // ── Main component ──
-const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady }) => {
+const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, forceShow, onClose }) => {
   const [show, setShow] = useState(false);
   const [visible, setVisible] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -39,19 +42,32 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady }) =
 
   const songs = getPreloadableSongs(queue);
 
+  // Open on first visit, or when forced from settings
   useEffect(() => {
-    if (songs.length > 0 && !isPreloadDone()) {
+    if (songs.length > 0 && (!isPreloadDone() || forceShow)) {
       setShow(true);
       setSelected(new Set(songs.map(s => s.id)));
       requestAnimationFrame(() => setVisible(true));
     }
-  }, [queue.length]);
+  }, [queue.length, forceShow]);
+
+  // Reset when forceShow changes to false
+  useEffect(() => {
+    if (!forceShow) {
+      setVisible(false);
+      const t = setTimeout(() => setShow(false), 300);
+      return () => clearTimeout(t);
+    }
+  }, [forceShow]);
 
   const close = useCallback(() => {
     markPreloadDone();
     setVisible(false);
-    setTimeout(() => setShow(false), 300);
-  }, []);
+    setTimeout(() => {
+      setShow(false);
+      if (forceShow && onClose) onClose();
+    }, 300);
+  }, [forceShow, onClose]);
 
   const toggle = (id: string) => {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });

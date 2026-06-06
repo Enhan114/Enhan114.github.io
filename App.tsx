@@ -60,6 +60,7 @@ const App: React.FC = () => {
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showShortcutSettings, setShowShortcutSettings] = useState(false);
+  const [forceShowCacheManager, setForceShowCacheManager] = useState(false);
   const [showVolumePopup, setShowVolumePopup] = useState(false);
   const [showSettingsPopup, setShowSettingsPopup] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -348,7 +349,12 @@ const App: React.FC = () => {
   return (
     <div className="relative w-full h-screen flex flex-col overflow-hidden">
       <WelcomeDialog />
-      <PreloadDialog queue={playlist.queue} onLyricsReady={(id, lyrics) => { playlist.updateSongInQueue(id, { lyrics, needsLyricsMatch: false }); }} />
+      <PreloadDialog
+        queue={playlist.queue}
+        onLyricsReady={(id, lyrics) => { playlist.updateSongInQueue(id, { lyrics, needsLyricsMatch: false }); }}
+        forceShow={forceShowCacheManager}
+        onClose={() => setForceShowCacheManager(false)}
+      />
       <FluidBackground
         key={isMobileLayout ? "mobile" : "desktop"}
         colors={currentSong?.colors || []}
@@ -423,6 +429,10 @@ const App: React.FC = () => {
             colors: [],
           }));
           playlist.addSongs(songs);
+        }}
+        onOpenCacheManager={() => {
+          setShowShortcutSettings(false);
+          setTimeout(() => setForceShowCacheManager(true), 100);
         }}
       />
 
