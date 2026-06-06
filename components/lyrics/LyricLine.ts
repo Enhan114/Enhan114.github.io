@@ -793,201 +793,164 @@ export class LyricLine implements ILyricLine {
     this.ctx.restore();
   }
 
+  /**
+   * Draw all timed words with a single continuous sweep gradient.
+   *
+   * Instead of per-word gradients (which produce a "jumping" fill that
+   * hops from word to word), we compute one sweep position that moves
+   * smoothly from the first word to the last, using the per-word timing
+   * data just to control the speed.
+   */
   private drawActiveWords(activeWords: WordLayout[], currentTime: number) {
-    const liftWords: WordLayout[] = [];
-    const emphasizedWords: Array<{ word: WordLayout; index: number }> = [];
+    const isBg = !!this.lyricLine.isBackground;
+    const allWords = this.layout!.words.filter(
+      (w) => w.text.trim() || w.isVerbatim,
+    );
 
+    // --- Emphasised words (rare: long syllables with glow) ---
+    const emphasizedWords: Array<{ word: WordLayout; index: number }> = [];
     activeWords.forEach((word, index) => {
       const elapsed = currentTime - word.startTime;
       const animationDuration = this.getWordAnimationDuration(
-        word,
-        activeWords,
-        index,
+        word, activeWords, index,
       );
-
       if (
         this.shouldEmphasizeWord(word) &&
         elapsed >= -EMPHASIS_ENTRY_LEAD &&
         elapsed < animationDuration
       ) {
         emphasizedWords.push({ word, index });
-      } else {
-        liftWords.push(word);
       }
     });
 
-    if (liftWords.length > 0) {
-      this.drawLiftedLine(liftWords, currentTime);
+    // --- Continuous sweep across the ENTIRE row ---
+    if (allWords.length === 0) return;
+
+    const textStartX = allWords[0].x;
+    const textEndX = allWords[allWords.length - 1].x +
+      allWords[allWords.length - 1].width;
+    const textWidth = Math.max(1, textEndX - textStartX);
+
+    // Map currentTime to a sweep X via word timing
+    const firstWord = allWords[0];
+    const lastWord = allWords[allWords.length - 1];
+    const lineStart = firstWord.startTime;
+    const lineEnd = Math.max(
+      lineStart + 0.01,
+      lastWord.endTime || lineStart + 4,
+    );
+
+    let sweepX: number;
+    if (currentTime <= lineStart) {
+      sweepX = textStartX;
+    } else if (currentTime >= lineEnd) {
+      sweepX = textEndX;
+    } else {
+      // Find the word whose time window contains currentTime and
+      // interpolate its X position smoothly.
+      sweepX = textStartX;
+      for (let i = 0; i < allWords.length; i++) {
+        const w = allWords[i];
+        if (currentTime >= w.startTime && currentTime < w.endTime) {
+          const wp = clamp01(
+            (currentTime - w.startTime) /
+              Math.max(0.001, w.endTime - w.startTime),
+          );
+          sweepX = w.x + wp * w.width;
+          break;
+        } else if (currentTime < w.startTime && i > 0) {
+          // Between words — hold at end of previous word
+          const prev = allWords[i - 1];
+          sweepX = prev.x + prev.width;
+          break;
+        } else if (i === allWords.length - 1) {
+          sweepX = w.x + w.width;
+        }
+      }
     }
 
-    for (const { word, index } of emphasizedWords) {
-      this.drawEmphasizedWord(word, activeWords, index, currentTime);
-    }
-  }
+    // Determine colours
+    const leftColor = isBg
+      ? `rgba(255,255,255,${BG_ACTIVE_ALPHA})`
+      : "#FFFFFF";
+    const rightColor = isBg
+      ? `rgba(255,255,255,${BG_FUTURE_ALPHA})`
+      : "rgba(255,255,255,0.5)";
+    const pastColor = isBg
+      ? `rgba(255,255,255,${BG_PAST_ALPHA})`
+      : "#FFFFFF";
 
-  /**
-   * Draw words with a per-word gradient fill using pre-rendered textures.
-   *
-   * This is the "fragment shader" step of the rendering pipeline:
-   *   1. The word texture (rasterised once in buildWordTextures) is the geometry.
-   *   2. A gradient rectangle is the "colour shader".
-   *   3. Compositing (`destination-in`) clips the gradient to the word shape.
-   *
-   * This replaces the per-frame fillText(text, gradient) call — which
-   * rasterises glyphs every frame — with fillRect + drawImage, both pure
-   * GPU texture operations.
-   */
-  private drawLiftedLine(words: WordLayout[], currentTime: number) {
-    const hasTextures = this.wordTextures && this.wordTextures.length > 0;
-
-    // Build a word-index → texture map for fast lookup
-    const wordToTex = new Map<number, (typeof this.wordTextures) extends Array<infer T> ? T : never>();
-    if (hasTextures) {
-      this.layout!.words.forEach((lw, i) => {
-        wordToTex.set(i, this.wordTextures![i]);
-      });
-    }
-
-    const scale = this.lyricLine.isBackground ? BG_FONT_SCALE : 1;
+    // Compute lift for each word (float-up animation)
+    const scale = isBg ? BG_FONT_SCALE : 1;
     const { mainHeight } = getFonts(this.isMobile, scale);
     const FLOAT_UP = 0.05 * mainHeight;
-    const texPadX = 4; // matches buildWordTextures padX
-    const texPadTop = 2; // matches buildWordTextures padTop
+    const texPadX = 4;
+    const texPadTop = 2;
 
-    const isBg = !!this.lyricLine.isBackground;
+    // Use ONE large gradient that covers the full text extent
+    const gradW = Math.ceil(textWidth + texPadX * 2);
+    const gradH = Math.ceil(mainHeight + texPadTop * 2 + 4);
+    const physW = Math.ceil(gradW * this.pixelRatio);
+    const physH = Math.ceil(gradH * this.pixelRatio);
 
-    for (const w of words) {
-      const elapsed = currentTime - w.startTime;
-      const duration = Math.max(0.001, w.endTime - w.startTime);
-      const p = clamp01(elapsed / duration);
+    if (this.liftCanvas.width < physW || this.liftCanvas.height < physH) {
+      this.liftCanvas.width = Math.max(this.liftCanvas.width, physW);
+      this.liftCanvas.height = Math.max(this.liftCanvas.height, physH);
+    }
 
-      // Determine fill colours
-      let leftColor: string;
-      let rightColor: string;
-      if (elapsed >= duration) {
-        leftColor = isBg
-          ? `rgba(255,255,255,${BG_PAST_ALPHA})`
-          : "#FFFFFF";
-        rightColor = leftColor;
-      } else if (elapsed < 0) {
-        leftColor = isBg
-          ? `rgba(255,255,255,${BG_FUTURE_ALPHA})`
-          : "rgba(255,255,255,0.5)";
-        rightColor = leftColor;
-      } else {
-        leftColor = isBg
-          ? `rgba(255,255,255,${BG_ACTIVE_ALPHA})`
-          : "#FFFFFF";
-        rightColor = isBg
-          ? `rgba(255,255,255,${BG_FUTURE_ALPHA})`
-          : "rgba(255,255,255,0.5)";
-      }
+    this.liftCtx.clearRect(0, 0, physW, physH);
+    this.liftCtx.save();
+    this.liftCtx.scale(this.pixelRatio, this.pixelRatio);
 
-      // Float-up animation
-      let lift = 0;
-      if (elapsed >= 0) {
-        const floatDur = Math.max(1.0, duration);
-        const t = Math.min(1, elapsed / floatDur);
-        lift = FLOAT_UP * t * (2 - t);
-      }
+    // Single continuous gradient
+    const normalizedEdge = clamp01((sweepX - textStartX) / textWidth);
+    const fadeRatio = isBg ? 0.18 : 0.12;
+    const grad = this.liftCtx.createLinearGradient(texPadX, 0, texPadX + gradW, 0);
+    grad.addColorStop(0, pastColor);
+    grad.addColorStop(Math.max(0, normalizedEdge - fadeRatio), leftColor);
+    grad.addColorStop(Math.min(1, normalizedEdge + fadeRatio), rightColor);
+    this.liftCtx.fillStyle = grad;
+    this.liftCtx.fillRect(0, 0, gradW, gradH);
 
-      // ---- Texture-based compositing path (fast) ----
-      const tex = wordToTex.get(this.layout!.words.indexOf(w));
-      if (tex) {
-        const texx = w.x - texPadX;
-        const texy = w.y - lift - texPadTop;
-
-        // Work in logical pixels on liftCtx, matching the DPR-scaling
-        // convention used everywhere else (fallback path, drawFullLine,
-        // and the main ctx).  Without this scale the texture-composited
-        // active line renders at 1/DPR resolution and appears visually
-        // smaller / blurrier than its neighbours — glaring on mobile where
-        // DPR≥2.
-        const gradW = Math.ceil(tex.width);
-        const gradH = Math.ceil(tex.height);
-        const physW = Math.ceil(gradW * this.pixelRatio);
-        const physH = Math.ceil(gradH * this.pixelRatio);
-
-        if (this.liftCanvas.width < physW || this.liftCanvas.height < physH) {
-          this.liftCanvas.width = Math.max(this.liftCanvas.width, physW);
-          this.liftCanvas.height = Math.max(this.liftCanvas.height, physH);
+    // Clip to each word texture (destination-in clips to ALL textures combined)
+    this.liftCtx.globalCompositeOperation = "destination-in";
+    const wordToTex = this.wordTextures;
+    if (wordToTex) {
+      for (let i = 0; i < allWords.length; i++) {
+        const w = allWords[i];
+        const tex = wordToTex[i];
+        if (!tex) continue;
+        const elapsed = currentTime - w.startTime;
+        const duration = Math.max(0.001, w.endTime - w.startTime);
+        let lift = 0;
+        if (elapsed >= 0) {
+          const floatDur = Math.max(1.0, duration);
+          const t = Math.min(1, elapsed / floatDur);
+          lift = FLOAT_UP * t * (2 - t);
         }
-
-        this.liftCtx.clearRect(0, 0, physW, physH);
-        this.liftCtx.save();
-        this.liftCtx.scale(this.pixelRatio, this.pixelRatio);
-
-        if (elapsed >= duration || elapsed < 0) {
-          this.liftCtx.fillStyle = leftColor;
-          this.liftCtx.fillRect(0, 0, gradW, gradH);
-        } else {
-          const grad = this.liftCtx.createLinearGradient(0, 0, gradW, 0);
-          const fadeWidth = Math.max(0.08, Math.min(0.25, duration * 0.1));
-          grad.addColorStop(Math.max(0, p - fadeWidth), leftColor);
-          grad.addColorStop(Math.min(1, p + fadeWidth), rightColor);
-          this.liftCtx.fillStyle = grad;
-          this.liftCtx.fillRect(0, 0, gradW, gradH);
-        }
-
-        // Clip gradient to word shape using cached texture.
-        // tex.canvas is already at physical resolution; draw it at logical
-        // size so the active pixelRatio scaling fills it correctly.
-        this.liftCtx.globalCompositeOperation = "destination-in";
+        const dx = w.x - textStartX + texPadX;
+        const dy = texPadTop - lift;
         this.liftCtx.drawImage(
           tex.canvas,
           0, 0, tex.width * this.pixelRatio, tex.height * this.pixelRatio,
-          0, 0, gradW, gradH,
+          dx, dy, tex.width, tex.height,
         );
-        this.liftCtx.globalCompositeOperation = "source-over";
-
-        this.liftCtx.restore();
-
-        // Blit from physical source → logical destination
-        this.ctx.drawImage(
-          this.liftCanvas,
-          0, 0, physW, physH,
-          texx, texy, gradW, gradH,
-        );
-        continue;
       }
+    }
+    this.liftCtx.globalCompositeOperation = "source-over";
+    this.liftCtx.restore();
 
-      // ---- Fallback: fillText path (when textures aren't built) ----
-      const topPad = Math.max(4, Math.ceil(mainHeight * 0.18));
-      const bottomPad = Math.max(8, Math.ceil(mainHeight * 0.32));
-      const logicalFallbackH = mainHeight + topPad + bottomPad;
-      const fbW = Math.ceil((w.width + 12) * this.pixelRatio);
-      const fbH = Math.ceil(logicalFallbackH * this.pixelRatio);
+    // Blit result
+    this.ctx.drawImage(
+      this.liftCanvas,
+      0, 0, physW, physH,
+      textStartX - texPadX, allWords[0].y - texPadTop,
+      gradW, gradH,
+    );
 
-      if (this.liftCanvas.width < fbW || this.liftCanvas.height < fbH) {
-        this.liftCanvas.width = Math.max(this.liftCanvas.width, fbW);
-        this.liftCanvas.height = Math.max(this.liftCanvas.height, fbH);
-      }
-
-      this.liftCtx.clearRect(0, 0, this.liftCanvas.width, this.liftCanvas.height);
-      this.liftCtx.save();
-      this.liftCtx.scale(this.pixelRatio, this.pixelRatio);
-      const { main } = getFonts(this.isMobile, scale);
-      this.liftCtx.font = main;
-      this.liftCtx.textBaseline = "top";
-
-      if (elapsed >= duration || elapsed < 0) {
-        this.liftCtx.fillStyle = leftColor;
-      } else {
-        const grad = this.liftCtx.createLinearGradient(6, 0, 6 + w.width, 0);
-        grad.addColorStop(Math.max(0, p), leftColor);
-        grad.addColorStop(Math.min(1, p + 0.15), rightColor);
-        this.liftCtx.fillStyle = grad;
-      }
-
-      this.liftCtx.fillText(w.text, 6, topPad);
-      this.liftCtx.restore();
-
-      this.ctx.drawImage(
-        this.liftCanvas,
-        0, 0, fbW, fbH,
-        w.x - 6, w.y - lift - topPad,
-        fbW / this.pixelRatio, logicalFallbackH,
-      );
+    // --- Emphasized words on top (subtle glow + bounce) ---
+    for (const { word, index } of emphasizedWords) {
+      this.drawEmphasizedWord(word, activeWords, index, currentTime);
     }
   }
 
