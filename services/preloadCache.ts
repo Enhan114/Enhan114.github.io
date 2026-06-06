@@ -121,6 +121,7 @@ export const preloadAll = async (
     await Promise.all(
       batch.map(async (song) => {
         // Audio
+        onProgress({ done, total: totalSteps, current: song.title, currentType: "audio" });
         onSongProgress(song.id, "audio", "loading");
         try {
           const cached = audioResourceCache.get(song.fileUrl);
@@ -140,6 +141,7 @@ export const preloadAll = async (
         report(song.title, "audio");
 
         // Lyrics
+        onProgress({ done, total: totalSteps, current: song.title, currentType: "lyrics" });
         onSongProgress(song.id, "lyrics", "loading");
         try {
           await searchAndMatchLyrics(song.title, song.artist);

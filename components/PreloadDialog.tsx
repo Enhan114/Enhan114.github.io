@@ -119,6 +119,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
     audio: string; lyrics: string;
     audioLoaded: number; audioTotal: number; audioSpeed: number;
   }>>(new Map());
+  const [checkingCache, setCheckingCache] = useState(true);
 
   // Split songs into cached / uncached
   const allSongs = getPreloadableSongs(queue);
@@ -135,21 +136,22 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
 
   // Verify actual cache state from IndexedDB (not just needsLyricsMatch)
   useEffect(() => {
-    if (allSongs.length === 0) return;
+    if (allSongs.length === 0) { setCheckingCache(false); return; }
+    setCheckingCache(true);
     import("../services/audioCacheDB").then(({ hasAudioBlob }) => {
-      allSongs.forEach((s) => {
+      Promise.all(allSongs.map((s) =>
         hasAudioBlob(s.fileUrl).then((hasAudio) => {
           if (hasAudio && s.needsLyricsMatch === false) {
             setSongState(prev => {
-              if (prev.has(s.id)) return;
+              if (prev.has(s.id)) return prev;
               const n = new Map(prev);
               n.set(s.id, { audio: "done", lyrics: "done", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 });
               return n;
             });
           }
-        }).catch(() => {});
-      });
-    }).catch(() => {});
+        }).catch(() => {})
+      )).finally(() => setCheckingCache(false));
+    }).catch(() => setCheckingCache(false));
   }, [queue.length]);
 
   // Open logic
@@ -268,7 +270,9 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
           {/* Left: Cached */}
           <div className="flex-1 flex flex-col min-w-0 rounded-2xl bg-white/[0.03] border border-white/5 overflow-hidden">
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-white/5">
-              <span className="text-xs font-semibold text-white/50">已缓存 ({cachedList.length})</span>
+              <span className="text-xs font-semibold text-white/50">
+                已缓存 ({checkingCache ? "..." : cachedList.length})
+              </span>
               {cachedList.length > 0 && (
                 <button onClick={deleteAllCached} disabled={loading}
                   className="text-[10px] text-red-400/50 hover:text-red-400 transition-colors">
@@ -279,7 +283,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
             <div className="flex-1 overflow-y-auto playlist-scrollbar px-2 py-1">
               {cachedList.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-[11px] text-white/15 italic">
-                  暂无缓存
+                  {checkingCache ? "检查中..." : "暂无缓存"}
                 </div>
               ) : (
                 cachedList.map(s => (
