@@ -691,7 +691,7 @@ const PlaylistPanel = React.memo(({
                             ) : (
                                 <>
                                     <button
-                                        onClick={() => setIsBlockMode((p) => !p)}
+                                        onClick={() => setIsBlockMode((p) => { console.log('[blocklist] toggling block mode', !p); return !p; })}
                                         className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isBlockMode ? 'text-red-400 bg-red-500/10' : 'text-white/50 hover:text-white hover:bg-white/10'}`}
                                         title={isBlockMode ? "退出屏蔽模式" : "屏蔽模式"}
                                     >
@@ -747,9 +747,10 @@ const PlaylistPanel = React.memo(({
                                                 }
                                             }}
                                             onClick={() => {
+                                                console.log('[blocklist] click', { isBlockMode, isEditing, songId: song.id, skipRef: skipRef.current });
                                                 if (skipRef.current) return;
                                                 if (isEditing) toggleSelection(song.id);
-                                                else if (isBlockMode) { e.stopPropagation(); blockSong(song.id); onRemove([song.id]); }
+                                                else if (isBlockMode) { console.log('[blocklist] blocking song', song.id); blockSong(song.id); onRemove([song.id]); }
                                                 else onPlay(index);
                                             }}
                                             className={`
