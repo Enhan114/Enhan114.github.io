@@ -8,8 +8,6 @@ import {
   formatComboDisplay,
   loadBindings,
 } from "../services/shortcutSettings";
-import ShortcutSettings from "./ShortcutSettings";
-
 interface KeyboardShortcutsProps {
   isPlaying: boolean;
   onPlayPause: () => void;
@@ -49,7 +47,6 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
 }) => {
   const { dict } = useI18n();
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [bindings, setBindings] = useState<ShortcutBinding[]>(() => loadBindings());
 
@@ -58,22 +55,14 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
     [bindings],
   );
 
-  const reloadBindings = useCallback(() => {
-    setBindings(loadBindings());
-  }, []);
-
-  const handleBindingsChanged = useCallback((updated: ShortcutBinding[]) => {
-    setBindings(updated);
-  }, []);
-
   useEffect(() => {
-    if (isHelpOpen || isSettingsOpen) {
+    if (isHelpOpen) {
       setIsVisible(true);
     } else {
       const timer = setTimeout(() => setIsVisible(false), 300);
       return () => clearTimeout(timer);
     }
-  }, [isHelpOpen, isSettingsOpen]);
+  }, [isHelpOpen]);
 
   // Use keyboard scope with lower priority (50) for global shortcuts
   useKeyboardScope(
@@ -95,13 +84,6 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
 
       if (e.key === "Escape") {
         if (isHelpOpen) { e.preventDefault(); setIsHelpOpen(false); return true; }
-        if (isSettingsOpen) { e.preventDefault(); setIsSettingsOpen(false); return true; }
-        return false;
-      }
-
-      // Allow close when settings panel is open
-      if (isSettingsOpen) {
-        if (match("toggleShortcuts")) { e.preventDefault(); setIsSettingsOpen(false); return true; }
         return false;
       }
 
@@ -130,14 +112,6 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
 
   return (
     <>
-      {/* Settings Panel */}
-      <ShortcutSettings
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onBindingsChanged={handleBindingsChanged}
-      />
-
-      {/* Help Dialog */}
       {isHelpOpen && (
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4 select-none font-sans pointer-events-none">
@@ -174,16 +148,6 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
                     <p className="text-white/50 font-medium">{dict.keys.subtitle}</p>
                   </div>
                   <button
-                    onClick={() => { setIsHelpOpen(false); reloadBindings(); setIsSettingsOpen(true); }}
-                    className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white"
-                    title="自定义快捷键"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0Z" stroke="currentColor" strokeWidth="1.5"/>
-                      <path d="M8 10.5V8m0-3h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                  </button>
-                  <button
                     onClick={() => setIsHelpOpen(false)}
                     className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
                   >
@@ -204,18 +168,8 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
                   💡 系统级快捷键（游戏中也有效）：键盘媒体键 ▶⏯ ⏭ ⏮
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-white/30 text-xs">
-                  <span>{dict.keys.press} <kbd className="bg-white/10 px-1.5 py-0.5 rounded mx-1 text-white/60">Esc</kbd> {dict.keys.close}</span>
-                  <button
-                    onClick={() => { setIsHelpOpen(false); reloadBindings(); setIsSettingsOpen(true); }}
-                    className="text-white/40 hover:text-white/70 transition-colors flex items-center gap-1"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60">
-                      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
-                      <path d="M7 4.5v4m0 1h.01" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                    </svg>
-                    自定义快捷键
-                  </button>
+                <div className="mt-4 pt-4 border-t border-white/5 text-center text-white/30 text-xs">
+                  {dict.keys.press} <kbd className="bg-white/10 px-1.5 py-0.5 rounded mx-1 text-white/60">Esc</kbd> {dict.keys.close}
                 </div>
               </div>
             </div>

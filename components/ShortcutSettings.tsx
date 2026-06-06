@@ -58,7 +58,20 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
   const [bindings, setBindings] = useState<ShortcutBinding[]>(() => loadBindings());
   const [recording, setRecording] = useState<ShortcutAction | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // --- Keyup-based recording state ---
+  // Keys are accumulated on keydown; the combo is finalised on keyup.
+  const pendingRef = useRef<{
+    ctrl: boolean;
+    alt: boolean;
+    shift: boolean;
+    meta: boolean;
+    key: string;
+    /** Timestamp of last keydown to debounce rapid repeats */
+    lastDown: number;
+  } | null>(null);
+  // Track which physical keys are currently held so we know when ALL are released
+  const heldKeysRef = useRef<Set<string>>(new Set());
 
   // Reload bindings when opened
   useEffect(() => {
@@ -90,72 +103,142 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
     onBindingsChanged(defaults);
   }, [onBindingsChanged]);
 
-  const startRecording = useCallback(
-    (action: ShortcutAction) => {
-      setRecording(action);
-      setConflict(null);
-    },
-    [],
-  );
-
-  const stopRecording = useCallback(() => {
-    setRecording(null);
+  const startRecording = useCallback((action: ShortcutAction) => {
+    setRecording(action);
     setConflict(null);
+    pendingRef.current = null;
+    heldKeysRef.current = new Set();
   }, []);
 
-  // Listen for key press when recording
+  const cancelRecording = useCallback(() => {
+    setRecording(null);
+    setConflict(null);
+    pendingRef.current = null;
+    heldKeysRef.current = new Set();
+  }, []);
+
+  const finaliseCombo = useCallback(
+    (combo: string) => {
+      if (!recording) return;
+      // Check for conflicts
+      const conflicting = bindings.find(
+        (b) => b.action !== recording && b.combo === combo,
+      );
+      if (conflicting) {
+        setConflict(`${combo} 已被「${conflicting.label}」使用`);
+        return;
+      }
+      const updated = bindings.map((b) =>
+        b.action === recording ? { ...b, combo } : b,
+      );
+      handleSave(updated);
+      setRecording(null);
+      setConflict(null);
+      pendingRef.current = null;
+      heldKeysRef.current = new Set();
+    },
+    [recording, bindings, handleSave],
+  );
+
+  // --- Keydown: accumulate modifier + key state ---
   useEffect(() => {
     if (!recording) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // Don't prevent default for Esc during recording — it cancels
+      if (e.key === "Escape") {
+        cancelRecording();
+        return;
+      }
+
+      // Ignore modifier-only presses
+      if (["Control", "Alt", "Shift", "Meta", "OS", "CapsLock", "NumLock", "ScrollLock", "Tab"].includes(e.key)) {
+        return;
+      }
+
+      // Prevent browser shortcuts during recording
       e.preventDefault();
       e.stopPropagation();
 
-      // Build combo
-      const parsed: ParsedCombo = {
+      // Track held keys
+      heldKeysRef.current.add(e.code);
+      const now = performance.now();
+      const last = pendingRef.current?.lastDown ?? 0;
+
+      // If a non-modifier key was already pressed and we're still holding,
+      // this is a repeat — ignore it unless significant time has passed
+      if (pendingRef.current && pendingRef.current.key !== e.key && now - last < 150) {
+        // New key pressed while still holding previous — update to new key
+        // (rare: user pressed key A, then key B without releasing A)
+      }
+
+      pendingRef.current = {
         ctrl: e.ctrlKey || e.metaKey,
         alt: e.altKey,
         shift: e.shiftKey,
         meta: false,
         key: e.key,
+        lastDown: now,
       };
 
-      // Ignore modifier-only presses
-      if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
+      // Force re-render to show pending keys
+      setConflict(null);
+    };
+
+    // --- Keyup: when all keys are released, finalise the combo ---
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!recording) return;
+
+      heldKeysRef.current.delete(e.code);
+
+      // Only finalise when ALL keys are released
+      if (heldKeysRef.current.size > 0) return;
+      if (!pendingRef.current) return;
+
+      const { key } = pendingRef.current;
+      // Build full combo string
+      const parsed: ParsedCombo = {
+        ctrl: pendingRef.current.ctrl,
+        alt: pendingRef.current.alt,
+        shift: pendingRef.current.shift,
+        meta: false,
+        key,
+      };
 
       const newCombo = comboToString(parsed);
       if (!newCombo) return;
 
-      // Check for conflicts
-      const conflicting = bindings.find(
-        (b) => b.action !== recording && b.combo === newCombo,
-      );
-      if (conflicting) {
-        setConflict(`${newCombo} 已被「${conflicting.label}」使用`);
-        return;
-      }
-
-      // Apply
-      const updated = bindings.map((b) =>
-        b.action === recording ? { ...b, combo: newCombo } : b,
-      );
-      handleSave(updated);
-      stopRecording();
+      finaliseCombo(newCombo);
     };
 
     window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [recording, bindings, handleSave, stopRecording]);
+    window.addEventListener("keyup", onKeyUp, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+    };
+  }, [recording, cancelRecording, finaliseCombo]);
 
+  // --- Render helpers ---
   const bindingMap = new Map(bindings.map((b) => [b.action, b]));
 
   if (!isOpen) return null;
 
+  // Show pending combo while recording
+  const pendingDisplay = pendingRef.current
+    ? formatComboDisplay(
+        comboToString({
+          ctrl: pendingRef.current.ctrl,
+          alt: pendingRef.current.alt,
+          shift: pendingRef.current.shift,
+          meta: false,
+          key: pendingRef.current.key,
+        }),
+      )
+    : null;
+
   return createPortal(
-    <div
-      ref={overlayRef}
-      className="fixed inset-0 z-[10000] flex items-center justify-center px-4 select-none font-sans"
-    >
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center px-4 select-none font-sans">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-md"
@@ -163,24 +246,22 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
       />
 
       {/* Panel */}
-      <div
-        className="
-          relative w-full max-w-lg max-h-[85vh] overflow-y-auto
-          bg-black/50 backdrop-blur-3xl saturate-150
-          border border-white/10
-          rounded-[28px]
-          shadow-[0_30px_80px_rgba(0,0,0,0.5)]
-          text-white
-          animate-in
-        "
-      >
+      <div className="
+        relative w-full max-w-lg max-h-[85vh] overflow-y-auto
+        bg-black/50 backdrop-blur-3xl saturate-150
+        border border-white/10
+        rounded-[28px]
+        shadow-[0_30px_80px_rgba(0,0,0,0.5)]
+        text-white
+        animate-in
+      ">
         <div className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-xl font-bold tracking-tight">快捷键设置</h2>
               <p className="text-white/40 text-sm mt-0.5">
-                点击快捷键 → 按下新按键 → 自动保存
+                点击快捷键 → 按下组合键 → 松开后自动保存
               </p>
             </div>
             <button
@@ -202,9 +283,9 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
 
           {/* Conflict warning */}
           {conflict && (
-            <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm">
-              {conflict}
-              <button onClick={stopRecording} className="ml-2 underline">取消</button>
+            <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm flex items-center justify-between">
+              <span>{conflict}</span>
+              <button onClick={cancelRecording} className="underline ml-2 shrink-0">取消</button>
             </div>
           )}
 
@@ -237,9 +318,22 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
                       </span>
                       <span className="flex gap-1">
                         {isRecording ? (
-                          <span className="min-w-[60px] h-7 px-2 flex items-center justify-center bg-white/20 border border-white/20 rounded-[8px] text-xs font-semibold text-white animate-pulse">
-                            按下按键…
-                          </span>
+                          pendingDisplay ? (
+                            // Show current combo while pressing
+                            pendingDisplay.map((part, i) => (
+                              <kbd
+                                key={i}
+                                className="min-w-[24px] h-6 px-1.5 flex items-center justify-center bg-white/20 border border-white/20 rounded-[7px] text-xs font-semibold text-white animate-pulse"
+                              >
+                                {part}
+                              </kbd>
+                            ))
+                          ) : (
+                            // Waiting for first keypress
+                            <span className="min-w-[40px] h-6 px-2 flex items-center justify-center bg-white/15 border border-white/15 rounded-[7px] text-xs text-white/50 italic">
+                              ...
+                            </span>
+                          )
                         ) : (
                           formatComboDisplay(b.combo).map((part, i) => (
                             <kbd
@@ -266,7 +360,9 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
             >
               恢复默认
             </button>
-            <span className="text-xs text-white/20">单击修改 · 自动保存</span>
+            <span className="text-xs text-white/20">
+              {recording ? "按下组合键 · 松开后保存" : "单击修改 · 自动保存"}
+            </span>
           </div>
         </div>
       </div>

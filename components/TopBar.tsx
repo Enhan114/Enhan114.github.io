@@ -1,17 +1,19 @@
 import React, { useRef, useState } from "react";
 import { useI18n } from "../hooks/useI18n";
-import { AuraLogo, SearchIcon, CloudDownloadIcon, InfoIcon, FullscreenIcon } from "./Icons";
+import { AuraLogo, SearchIcon, CloudDownloadIcon, InfoIcon, FullscreenIcon, SettingsIcon } from "./Icons";
 import AboutDialog from "./AboutDialog";
 
 interface TopBarProps {
   onFilesSelected: (files: FileList) => void;
   onSearchClick: () => void;
+  onShortcutSettingsClick: () => void;
   disabled?: boolean;
 }
 
 const TopBar: React.FC<TopBarProps> = ({
   onFilesSelected,
   onSearchClick,
+  onShortcutSettingsClick,
   disabled,
 }) => {
   const { dict } = useI18n();
@@ -157,6 +159,15 @@ const TopBar: React.FC<TopBarProps> = ({
             title={isFullscreen ? dict.top.exitFullscreen : dict.top.enterFullscreen}
           >
             <FullscreenIcon className="w-5 h-5" isFullscreen={isFullscreen} />
+          </button>
+
+          {/* Shortcut Settings Button */}
+          <button
+            onClick={onShortcutSettingsClick}
+            className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white/80 hover:bg-white/20 hover:text-white transition-all shadow-sm"
+            title="快捷键设置"
+          >
+            <SettingsIcon className="w-5 h-5" />
           </button>
 
           <input
