@@ -16,12 +16,8 @@ export const markPreloadDone = () => {
   catch {}
 };
 
-/** Return songs that may benefit from preloading */
-export const getPreloadableSongs = (queue: Song[]): Song[] => {
-  return queue.filter((s) =>
-    s.fileUrl && !s.fileUrl.startsWith("blob:") && s.source !== "local",
-  );
-};
+export const getPreloadableSongs = (queue: Song[]): Song[] =>
+  queue.filter((s) => s.fileUrl && !s.fileUrl.startsWith("blob:") && s.source !== "local");
 
 export interface PreloadProgress {
   done: number;
@@ -30,7 +26,59 @@ export interface PreloadProgress {
   currentType: "audio" | "lyrics";
 }
 
-export type SongProgressCallback = (id: string, type: "audio" | "lyrics", status: "loading" | "done" | "error") => void;
+export interface SongFileProgress {
+  /** Bytes downloaded so far (audio only) */
+  loaded: number;
+  /** Total bytes (audio only), 0 if unknown */
+  total: number;
+}
+
+export type SongProgressCallback = (
+  id: string,
+  type: "audio" | "lyrics",
+  status: "loading" | "done" | "error",
+  fileProgress?: SongFileProgress,
+) => void;
+
+/**
+ * Fetch and cache an audio file, reporting download progress.
+ */
+async function fetchAudioWithProgress(
+  url: string,
+  cache: { set: (key: string, blob: Blob) => void },
+  onFileProgress: (p: SongFileProgress) => void,
+): Promise<void> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const total = parseInt(response.headers.get("content-length") || "0", 10);
+  const reader = response.body?.getReader();
+  if (!reader || total <= 0) {
+    // Fallback: no streaming support or unknown size
+    onFileProgress({ loaded: 0, total });
+    const blob = await response.blob();
+    cache.set(url, blob);
+    onFileProgress({ loaded: blob.size, total: blob.size });
+    return;
+  }
+
+  // Stream with progress
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  onFileProgress({ loaded: 0, total });
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.length;
+    onFileProgress({ loaded, total });
+  }
+
+  const blob = new Blob(chunks);
+  cache.set(url, blob);
+  onFileProgress({ loaded, total });
+}
 
 export const preloadAll = async (
   songs: Song[],
@@ -41,28 +89,30 @@ export const preloadAll = async (
   const { searchAndMatchLyrics } = await import("./lyricsService");
 
   let done = 0;
-  const totalSteps = songs.length * 2; // audio + lyrics per song
+  const totalSteps = songs.length * 2;
 
   for (const song of songs) {
-    // Step 1: Preload audio
+    // Step 1: Audio
     onProgress({ done, total: totalSteps, current: song.title, currentType: "audio" });
     onSongProgress(song.id, "audio", "loading");
     try {
-      const cachedAudio = audioResourceCache.get(song.fileUrl);
-      if (!cachedAudio) {
-        const response = await fetch(song.fileUrl);
-        if (response.ok) {
-          const blob = await response.blob();
-          audioResourceCache.set(song.fileUrl, blob);
-        }
+      const cached = audioResourceCache.get(song.fileUrl);
+      if (cached) {
+        onSongProgress(song.id, "audio", "done", { loaded: cached.size, total: cached.size });
+      } else {
+        await fetchAudioWithProgress(
+          song.fileUrl,
+          audioResourceCache as { set: (k: string, b: Blob) => void },
+          (p) => onSongProgress(song.id, "audio", "loading", p),
+        );
+        onSongProgress(song.id, "audio", "done");
       }
-      onSongProgress(song.id, "audio", "done");
     } catch {
       onSongProgress(song.id, "audio", "error");
     }
     done++;
 
-    // Step 2: Preload lyrics
+    // Step 2: Lyrics
     onProgress({ done, total: totalSteps, current: song.title, currentType: "lyrics" });
     onSongProgress(song.id, "lyrics", "loading");
     try {

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Song } from "../types";
 import {
   isPreloadDone, markPreloadDone, getPreloadableSongs, preloadAll,
-  type PreloadProgress,
+  type PreloadProgress, type SongFileProgress,
 } from "../services/preloadCache";
 
 interface PreloadDialogProps {
@@ -38,7 +38,10 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<PreloadProgress | null>(null);
-  const [songState, setSongState] = useState<Map<string, { audio: string; lyrics: string }>>(new Map());
+  const [songState, setSongState] = useState<Map<string, {
+    audio: string; lyrics: string;
+    audioLoaded: number; audioTotal: number;
+  }>>(new Map());
 
   const songs = getPreloadableSongs(queue);
 
@@ -81,11 +84,16 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
     await preloadAll(
       toLoad,
       (p) => setProgress({ ...p }),
-      (id, type, status) => {
+      (id, type, status, fileProgress) => {
         setSongState(prev => {
           const n = new Map(prev);
-          const cur = n.get(id) || { audio: "", lyrics: "" };
-          n.set(id, { ...cur, [type]: status });
+          const cur = n.get(id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0 };
+          const entry = { ...cur, [type]: status };
+          if (fileProgress) {
+            entry.audioLoaded = fileProgress.loaded;
+            entry.audioTotal = fileProgress.total;
+          }
+          n.set(id, entry);
           return n;
         });
         if (type === "lyrics" && status === "done") {
@@ -154,6 +162,12 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
               const audioDone = st?.audio === "done";
               const lyricsDone = st?.lyrics === "done";
               const isLoading = st?.audio === "loading" || st?.lyrics === "loading";
+              const audioPct = st && st.audioTotal > 0
+                ? Math.round((st.audioLoaded / st.audioTotal) * 100)
+                : 0;
+              const audioSize = st && st.audioTotal > 0
+                ? `${(st.audioLoaded / 1048576).toFixed(1)} / ${(st.audioTotal / 1048576).toFixed(1)} MB`
+                : "";
 
               return (
                 <div
@@ -209,6 +223,16 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
                     <div className="text-[13px] text-white/50 truncate font-medium">
                       {song.artist}
                     </div>
+                    {/* Audio download progress bar */}
+                    {st?.audio === "loading" && st.audioTotal > 0 && (
+                      <div className="mt-1">
+                        <div className="h-[3px] bg-white/10 rounded-full overflow-hidden w-full max-w-[200px]">
+                          <div className="h-full bg-white/50 rounded-full transition-all duration-200"
+                            style={{ width: `${audioPct}%` }} />
+                        </div>
+                        <div className="text-[10px] text-white/30 mt-0.5">{audioPct}% {audioSize}</div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Status indicator */}

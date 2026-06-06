@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m 'Feat: real-time audio download progress in preload dialog *)"
+    ]
+  }
+}
