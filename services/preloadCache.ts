@@ -62,7 +62,7 @@ async function fetchAudioWithProgress(
     onFileProgress({ loaded: 0, total: 0, speed: 0 });
     const blob = await response.blob();
     cache.set(url, blob);
-  try { const { saveAudioBlob } = await import("./audioCacheDB"); await saveAudioBlob(url, blob); } catch {}
+  try { const { saveAudioBlob } = await import("./audioCacheDB"); await saveAudioBlob(url, blob); } catch (e) { console.warn("[PreloadCache] IndexedDB save failed:", e); }
     onFileProgress({ loaded: blob.size, total: blob.size, speed: 0 });
     return;
   }
@@ -95,7 +95,7 @@ async function fetchAudioWithProgress(
 
   const blob = new Blob(chunks);
   cache.set(url, blob);
-  try { const { saveAudioBlob } = await import("./audioCacheDB"); await saveAudioBlob(url, blob); } catch {}
+  try { const { saveAudioBlob } = await import("./audioCacheDB"); await saveAudioBlob(url, blob); } catch (e) { console.warn("[PreloadCache] IndexedDB save failed:", e); }
   onFileProgress({ loaded: total, total, speed: 0 });
 }
 
@@ -137,7 +137,8 @@ export const preloadAll = async (
             );
             onSongProgress(song.id, "audio", "done");
           }
-        } catch {
+        } catch (e) {
+          console.warn(`[PreloadCache] audio FAILED: ${song.title}`, e);
           onSongProgress(song.id, "audio", "error");
         }
         report(song.title, "audio");
@@ -154,7 +155,8 @@ export const preloadAll = async (
           } else {
             onSongProgress(song.id, "lyrics", "error");
           }
-        } catch {
+        } catch (e) {
+          console.warn(`[PreloadCache] lyrics FAILED: ${song.title}`, e);
           onSongProgress(song.id, "lyrics", "error");
         }
         report(song.title, "lyrics");

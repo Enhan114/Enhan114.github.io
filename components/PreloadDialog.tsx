@@ -122,6 +122,8 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
   const [checkingCache, setCheckingCache] = useState(true);
 
   // Split songs into cached / uncached
+  // KEY FIX: audio cache and lyrics cache are independent.
+  // A song is "cached" once its audio is cached — lyrics are a bonus.
   const allSongs = getPreloadableSongs(queue);
   const cachedIds = new Set<string>();
   const uncachedIds = new Set<string>();
@@ -129,8 +131,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
   for (const s of allSongs) {
     const st = songState.get(s.id);
     const audioDone = st?.audio === "done";
-    const lyricsDone = s.needsLyricsMatch === false || st?.lyrics === "done";
-    if (audioDone && lyricsDone) cachedIds.add(s.id);
+    if (audioDone) cachedIds.add(s.id);
     else uncachedIds.add(s.id);
   }
 
@@ -138,14 +139,19 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
   useEffect(() => {
     if (allSongs.length === 0) { setCheckingCache(false); return; }
     setCheckingCache(true);
+    const urls = allSongs.map(s => s.fileUrl);
     import("../services/audioCacheDB").then(({ batchHasAudioBlobs }) =>
-      batchHasAudioBlobs(allSongs.map(s => s.fileUrl)).then((found) => {
+      batchHasAudioBlobs(urls).then((found) => {
+        // KEY FIX: restore audio cache state regardless of lyrics status
+        // Previously required needsLyricsMatch===false, which caused cached
+        // audio to be "lost" on refresh if lyrics weren't also cached.
         allSongs.forEach((s) => {
-          if (found.has(s.fileUrl) && s.needsLyricsMatch === false) {
+          if (found.has(s.fileUrl)) {
             setSongState(prev => {
-              if (prev.has(s.id)) return prev;
+              if (prev.get(s.id)?.audio === "done") return prev;
               const n = new Map(prev);
-              n.set(s.id, { audio: "done", lyrics: "done", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 });
+              const cur = n.get(s.id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 };
+              n.set(s.id, { ...cur, audio: "done" });
               return n;
             });
           }
@@ -183,10 +189,11 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
 
   const downloadBatch = async (ids: string[]) => {
     setLoading(true);
+    loadingRef.current = true;
     const toLoad = allSongs.filter(s => ids.includes(s.id));
     await preloadAll(
       toLoad,
-      (p) => setProgress({ ...p }),
+      (p) => { setProgress({ ...p }); },
       (id, type, status, fp, lyricsData) => {
         setSongState(prev => {
           const n = new Map(prev);
@@ -202,6 +209,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
       },
     );
     setLoading(false);
+    loadingRef.current = false;
   };
 
   const deleteCached = (id: string) => {
@@ -214,13 +222,28 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
     if (song) {
       onLyricsReady(id, []); // reset lyrics flag
       audioResourceCache.delete(song.fileUrl); // in-memory LRU
-      deleteAudioBlob(song.fileUrl).catch(() => {}); // IndexedDB
+      deleteAudioBlob(song.fileUrl).catch((e) => {
+        console.warn(`[CacheDB] delete failed for ${song.title}:`, e);
+      });
     }
   };
 
-  const deleteAllCached = () => {
-    for (const id of cachedIds) {
-      deleteCached(id);
+  const deleteAllCached = async () => {
+    // Collect all songs to delete first (before state changes cause re-render)
+    const toDelete = allSongs.filter(s => cachedIds.has(s.id));
+    // Update state once — remove all
+    setSongState(prev => {
+      const n = new Map(prev);
+      for (const id of cachedIds) n.delete(id);
+      return n;
+    });
+    // Delete from all backends in parallel
+    for (const song of toDelete) {
+      onLyricsReady(song.id, []);
+      audioResourceCache.delete(song.fileUrl);
+      deleteAudioBlob(song.fileUrl).catch((e) => {
+        console.warn(`[CacheDB] delete failed for ${song.title}:`, e);
+      });
     }
   };
 
