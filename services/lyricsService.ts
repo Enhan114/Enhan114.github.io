@@ -470,15 +470,17 @@ export const searchAndMatchLyrics = async (
           bestSong = s;
         }
       }
-      if (bestDiff < 15) {
+      if (Number.isFinite(bestDiff) && bestDiff < 15) {
         // Only use duration-matched result if it's within 15 seconds
         console.log(
           `Duration-matched: ${bestSong.name} (${((bestSong.duration ?? 0) / 1000).toFixed(0)}s ≈ ${durationSec.toFixed(0)}s, diff ${bestDiff.toFixed(1)}s)`,
         );
       } else {
+        // No close duration match — fall back to first search result
         console.log(
-          `Duration match too far (best diff ${bestDiff.toFixed(1)}s), falling back to first result`,
+          `Duration match too far (best diff ${Number.isFinite(bestDiff) ? bestDiff.toFixed(1) : "∞"}s), falling back to first result`,
         );
+        bestSong = songs[0];
       }
     }
 
