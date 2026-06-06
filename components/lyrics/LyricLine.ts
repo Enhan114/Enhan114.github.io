@@ -732,7 +732,7 @@ export class LyricLine implements ILyricLine {
       } else {
         this.ctx.fillStyle = isBackground
           ? `rgba(255, 255, 255, ${BG_ACTIVE_ALPHA})`
-          : "#FFFFFF";
+          : getLyricsColor();
       }
       this.layout.words.forEach((w) => this.ctx.fillText(w.text, w.x, w.y));
     } else if (active) {
@@ -747,26 +747,30 @@ export class LyricLine implements ILyricLine {
 
       lineGroups.forEach((lineWords) => {
         const mode = rowModeOf(lineWords, currentTime);
+        const c = getLyricsColor();
 
         if (mode === "active" || mode === "mixed") {
           this.drawActiveWords(lineWords, currentTime);
         } else if (mode === "past") {
           this.ctx.fillStyle = isBackground
             ? `rgba(255, 255, 255, ${BG_PAST_ALPHA})`
-            : "#FFFFFF";
+            : c;
           lineWords.forEach((w) =>
             this.ctx.fillText(w.text, w.x, w.y - FLOAT_UP),
           );
         } else {
           this.ctx.fillStyle = isBackground
             ? `rgba(255, 255, 255, ${BG_FUTURE_ALPHA})`
-            : "rgba(255, 255, 255, 0.5)";
+            : futureLyricsColor(0.5);
           lineWords.forEach((w) => this.ctx.fillText(w.text, w.x, w.y));
         }
       });
     } else {
-      const baseOpacity = isBackground ? BG_IDLE_ALPHA : 0.3;
-      this.ctx.fillStyle = `rgba(255, 255, 255, ${baseOpacity})`;
+      if (isBackground) {
+        this.ctx.fillStyle = `rgba(255, 255, 255, ${BG_IDLE_ALPHA})`;
+      } else {
+        this.ctx.fillStyle = futureLyricsColor(0.3);
+      }
       this.layout.words.forEach((w) => this.ctx.fillText(w.text, w.x, w.y));
     }
 
