@@ -11,9 +11,8 @@ import {
   ParsedCombo,
 } from "../services/shortcutSettings";
 import { getLyricsColor, setLyricsColor } from "../services/lyricsColorSettings";
-import { getBlockedIds, unblockSongs } from "../services/blocklist";
+import { getBlockedSongs, unblockSongs, type BlockedSongInfo } from "../services/blocklist";
 import ColorPicker from "./ColorPicker";
-import type { Song } from "../types";
 
 // ---------------------------------------------------------------------------
 //  Props
@@ -22,11 +21,7 @@ import type { Song } from "../types";
 interface ShortcutSettingsProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Called after bindings are saved so parent can refresh its state */
   onBindingsChanged: (bindings: ShortcutBinding[]) => void;
-  /** Full song queue for blocklist display */
-  queue?: Song[];
-  /** Called after songs are unblocked so parent can re-add them */
   onUnblock?: (ids: string[]) => void;
 }
 
@@ -58,7 +53,6 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
   isOpen,
   onClose,
   onBindingsChanged,
-  queue,
   onUnblock,
 }) => {
   const [bindings, setBindings] = useState<ShortcutBinding[]>(() => loadBindings());
@@ -370,7 +364,7 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
           </div>
 
           {/* Blocklist */}
-          <BlocklistSection queue={queue} onUnblock={onUnblock} />
+          <BlocklistSection onUnblock={onUnblock} />
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-4 border-t border-white/5">
@@ -404,12 +398,10 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
 // ---------------------------------------------------------------------------
 
 const BlocklistSection: React.FC<{
-  queue?: Song[];
   onUnblock?: (ids: string[]) => void;
-}> = ({ queue, onUnblock }) => {
-  const [blockedIds, setBlockedIds] = useState<string[]>(() => getBlockedIds());
+}> = ({ onUnblock }) => {
+  const [blockedSongs, setBlockedSongs] = useState<BlockedSongInfo[]>(() => getBlockedSongs());
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const blockedSongs = (queue || []).filter((s) => blockedIds.includes(s.id));
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -422,7 +414,7 @@ const BlocklistSection: React.FC<{
 
   const handleRemove = (ids: string[]) => {
     const removed = unblockSongs(ids);
-    setBlockedIds(getBlockedIds());
+    setBlockedSongs(getBlockedSongs());
     setSelected(new Set());
     if (onUnblock && removed.length > 0) onUnblock(removed);
   };
@@ -436,19 +428,12 @@ const BlocklistSection: React.FC<{
         <p className="text-xs text-white/20 px-1">暂无屏蔽歌曲</p>
       ) : (
         <>
-          {/* Bulk actions */}
           {selected.size > 0 && (
             <div className="flex items-center gap-2 mb-2 px-1">
-              <button
-                onClick={() => handleRemove([...selected])}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors"
-              >
+              <button onClick={() => handleRemove([...selected])} className="text-xs text-red-400 hover:text-red-300 transition-colors">
                 移除选中 ({selected.size})
               </button>
-              <button
-                onClick={() => handleRemove([...blockedIds])}
-                className="text-xs text-white/30 hover:text-white/50 transition-colors"
-              >
+              <button onClick={() => handleRemove(blockedSongs.map(s => s.id))} className="text-xs text-white/30 hover:text-white/50 transition-colors">
                 全部移除
               </button>
             </div>
@@ -457,43 +442,22 @@ const BlocklistSection: React.FC<{
             {blockedSongs.map((song) => {
               const isSel = selected.has(song.id);
               return (
-                <div
-                  key={song.id}
-                  onClick={() => toggleSelect(song.id)}
-                  className={`
-                    flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer
-                    transition-all duration-150
-                    ${isSel ? 'bg-white/10 ring-1 ring-white/20' : 'hover:bg-white/5'}
-                  `}
-                >
-                  {/* Check circle */}
-                  <div
-                    className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                      isSel ? 'border-transparent' : 'border-white/20'
-                    }`}
-                    style={{ backgroundColor: isSel ? '#fff' : 'transparent' }}
-                  >
+                <div key={song.id} onClick={() => toggleSelect(song.id)}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 ${isSel ? 'bg-white/10 ring-1 ring-white/20' : 'hover:bg-white/5'}`}>
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${isSel ? 'border-transparent' : 'border-white/20'}`}
+                    style={{ backgroundColor: isSel ? '#fff' : 'transparent' }}>
                     {isSel && (
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
                         <path d="M1.5 4L3.5 6L6.5 2" stroke="#000" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     )}
                   </div>
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-white/40 truncate">
-                      {song.title}
-                    </div>
-                    <div className="text-xs text-white/25 truncate">
-                      {song.artist}
-                    </div>
+                    <div className="text-sm font-medium text-white/40 truncate">{song.title}</div>
+                    <div className="text-xs text-white/25 truncate">{song.artist}</div>
                   </div>
-                  {/* Remove button */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleRemove([song.id]); }}
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-white/25 hover:text-red-400 hover:bg-white/5 transition-all shrink-0"
-                    title="取消屏蔽"
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); handleRemove([song.id]); }}
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-white/25 hover:text-red-400 hover:bg-white/5 transition-all shrink-0" title="取消屏蔽">
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                       <path d="M3 3L11 11M3 11L11 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                     </svg>

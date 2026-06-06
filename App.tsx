@@ -405,7 +405,6 @@ const App: React.FC = () => {
         isOpen={showShortcutSettings}
         onClose={() => setShowShortcutSettings(false)}
         onBindingsChanged={() => {}}
-        queue={playlist.queue}
         onUnblock={(ids) => {
           // Re-add unblocked songs to the end of the playlist
           const songs = playlist.queue.filter((s) => ids.includes(s.id));

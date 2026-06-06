@@ -1,61 +1,88 @@
 /**
  * Song blocklist — persisted in localStorage.
  *
- * Blocked songs stay visible in the playlist but are greyed out and
- * unplayable.  Unblocking adds them back to the end of the queue.
+ * Stores blocked song IDs along with minimal metadata (title, artist)
+ * so the blocklist UI works even after the song is removed from the
+ * queue.
  */
 
 const STORAGE_KEY = "aura:blocked-songs";
 
-const load = (): Set<string> => {
-  if (typeof window === "undefined") return new Set();
+export interface BlockedSongInfo {
+  id: string;
+  title: string;
+  artist: string;
+}
+
+const load = (): BlockedSongInfo[] => {
+  if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set();
-    const ids: string[] = JSON.parse(raw);
-    return new Set(ids.filter((id) => typeof id === "string"));
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is BlockedSongInfo =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as any).id === "string",
+    );
   } catch {
-    return new Set();
+    return [];
   }
 };
 
-const save = (set: Set<string>) => {
+const save = (list: BlockedSongInfo[]) => {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   } catch { /* quota */ }
 };
 
-let _cache: Set<string> | null = null;
-const cache = (): Set<string> => {
+let _cache: BlockedSongInfo[] | null = null;
+const cache = (): BlockedSongInfo[] => {
   if (!_cache) _cache = load();
   return _cache;
 };
 
-export const isBlocked = (id: string): boolean => cache().has(id);
+export const isBlocked = (id: string): boolean =>
+  cache().some((s) => s.id === id);
 
-export const blockSong = (id: string) => {
-  cache().add(id);
-  save(cache());
+export const blockSong = (id: string, title = "", artist = "") => {
+  const list = cache();
+  if (!list.some((s) => s.id === id)) {
+    list.push({ id, title, artist });
+    save(list);
+  }
 };
 
 export const unblockSong = (id: string) => {
-  cache().delete(id);
-  save(cache());
+  const idx = cache().findIndex((s) => s.id === id);
+  if (idx >= 0) {
+    cache().splice(idx, 1);
+    save(cache());
+  }
 };
 
-export const getBlockedIds = (): string[] => [...cache()];
+export const getBlockedSongs = (): BlockedSongInfo[] => [...cache()];
+
+export const getBlockedIds = (): string[] => cache().map((s) => s.id);
 
 /** Bulk unblock — returns the unblocked IDs so caller can re-add them */
 export const unblockSongs = (ids: string[]): string[] => {
+  const idSet = new Set(ids);
   const unblocked: string[] = [];
-  for (const id of ids) {
-    if (cache().has(id)) {
-      cache().delete(id);
-      unblocked.push(id);
+  const remaining = cache().filter((s) => {
+    if (idSet.has(s.id)) {
+      unblocked.push(s.id);
+      return false;
     }
+    return true;
+  });
+  if (unblocked.length > 0) {
+    _cache = remaining;
+    save(remaining);
   }
-  if (unblocked.length > 0) save(cache());
   return unblocked;
 };
 
