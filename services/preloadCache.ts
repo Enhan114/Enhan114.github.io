@@ -105,40 +105,51 @@ export const preloadAll = async (
   const { audioResourceCache } = await import("./cache");
   const { searchAndMatchLyrics } = await import("./lyricsService");
 
-  let done = 0;
   const totalSteps = songs.length * 2;
-
-  for (const song of songs) {
-    // Step 1: Audio
-    onProgress({ done, total: totalSteps, current: song.title, currentType: "audio" });
-    onSongProgress(song.id, "audio", "loading");
-    try {
-      const cached = audioResourceCache.get(song.fileUrl);
-      if (cached) {
-        onSongProgress(song.id, "audio", "done", { loaded: cached.size, total: cached.size });
-      } else {
-        await fetchAudioWithProgress(
-          song.fileUrl,
-          audioResourceCache as { set: (k: string, b: Blob) => void },
-          (p) => onSongProgress(song.id, "audio", "loading", p),
-        );
-        onSongProgress(song.id, "audio", "done");
-      }
-    } catch {
-      onSongProgress(song.id, "audio", "error");
-    }
+  let done = 0;
+  const report = (title: string, type: "audio" | "lyrics") => {
     done++;
+    onProgress({ done, total: totalSteps, current: title, currentType: type });
+  };
 
-    // Step 2: Lyrics
-    onProgress({ done, total: totalSteps, current: song.title, currentType: "lyrics" });
-    onSongProgress(song.id, "lyrics", "loading");
-    try {
-      await searchAndMatchLyrics(song.title, song.artist);
-      onSongProgress(song.id, "lyrics", "done");
-    } catch {
-      onSongProgress(song.id, "lyrics", "error");
-    }
-    done++;
+  // Download 4 songs in parallel for much faster preload
+  const PARALLEL = 4;
+
+  // Process songs in batches
+  for (let i = 0; i < songs.length; i += PARALLEL) {
+    const batch = songs.slice(i, i + PARALLEL);
+    await Promise.all(
+      batch.map(async (song) => {
+        // Audio
+        onSongProgress(song.id, "audio", "loading");
+        try {
+          const cached = audioResourceCache.get(song.fileUrl);
+          if (cached) {
+            onSongProgress(song.id, "audio", "done", { loaded: cached.size, total: cached.size, speed: 0 });
+          } else {
+            await fetchAudioWithProgress(
+              song.fileUrl,
+              audioResourceCache as { set: (k: string, b: Blob) => void },
+              (p) => onSongProgress(song.id, "audio", "loading", p),
+            );
+            onSongProgress(song.id, "audio", "done");
+          }
+        } catch {
+          onSongProgress(song.id, "audio", "error");
+        }
+        report(song.title, "audio");
+
+        // Lyrics
+        onSongProgress(song.id, "lyrics", "loading");
+        try {
+          await searchAndMatchLyrics(song.title, song.artist);
+          onSongProgress(song.id, "lyrics", "done");
+        } catch {
+          onSongProgress(song.id, "lyrics", "error");
+        }
+        report(song.title, "lyrics");
+      }),
+    );
   }
 
   onProgress({ done, total: totalSteps, current: "", currentType: "lyrics" });
