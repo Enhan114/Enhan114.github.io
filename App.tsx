@@ -128,17 +128,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Global Search Shortcut (Registered directly via useEffect for simplicity, or could use useKeyboardScope with high priority)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setShowSearch((prev) => !prev);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  // Search shortcut is now handled by KeyboardShortcuts via custom bindings
 
   const [hasLoadedStaticMusic, setHasLoadedStaticMusic] = useState(false);
   const staticMusicLoadedRef = useRef(false);
@@ -385,6 +375,7 @@ const App: React.FC = () => {
         onSpeedChange={player.setSpeed}
         onToggleVolumeDialog={() => setShowVolumePopup((prev) => !prev)}
         onToggleSpeedDialog={() => setShowSettingsPopup((prev) => !prev)}
+        onToggleSearch={() => setShowSearch((prev) => !prev)}
       />
 
       <MediaSessionController

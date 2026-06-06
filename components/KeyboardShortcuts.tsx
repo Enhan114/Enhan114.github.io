@@ -1,7 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../hooks/useI18n";
 import { useKeyboardScope } from "../hooks/useKeyboardScope";
+import {
+  ShortcutBinding,
+  eventMatchesCombo,
+  formatComboDisplay,
+  loadBindings,
+} from "../services/shortcutSettings";
+import ShortcutSettings from "./ShortcutSettings";
 
 interface KeyboardShortcutsProps {
   isPlaying: boolean;
@@ -19,6 +26,7 @@ interface KeyboardShortcutsProps {
   onSpeedChange: (speed: number) => void;
   onToggleVolumeDialog: () => void;
   onToggleSpeedDialog: () => void;
+  onToggleSearch: () => void;
 }
 
 const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
@@ -37,19 +45,35 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
   onSpeedChange,
   onToggleVolumeDialog,
   onToggleSpeedDialog,
+  onToggleSearch,
 }) => {
   const { dict } = useI18n();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const [bindings, setBindings] = useState<ShortcutBinding[]>(() => loadBindings());
+
+  const getCombo = useCallback(
+    (action: string) => bindings.find((b) => b.action === action)?.combo ?? "",
+    [bindings],
+  );
+
+  const reloadBindings = useCallback(() => {
+    setBindings(loadBindings());
+  }, []);
+
+  const handleBindingsChanged = useCallback((updated: ShortcutBinding[]) => {
+    setBindings(updated);
+  }, []);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isHelpOpen || isSettingsOpen) {
       setIsVisible(true);
     } else {
       const timer = setTimeout(() => setIsVisible(false), 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen]);
+  }, [isHelpOpen, isSettingsOpen]);
 
   // Use keyboard scope with lower priority (50) for global shortcuts
   useKeyboardScope(
@@ -61,179 +85,146 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
       )
         return false;
 
-      // Ctrl + /
-      if ((e.ctrlKey || e.metaKey) && e.key === "/") {
-        e.preventDefault();
-        setIsOpen((prev) => !prev);
-        return true;
-      }
+      // Read combos dynamically so user changes take effect immediately
+      const currentBindings = bindings;
 
-      // Ctrl + P
-      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
-        e.preventDefault();
-        onTogglePlaylist();
-        return true;
-      }
+      const match = (action: string) => {
+        const combo = currentBindings.find((b) => b.action === action)?.combo;
+        return combo ? eventMatchesCombo(e, combo) : false;
+      };
 
       if (e.key === "Escape") {
-        if (isOpen) {
-          e.preventDefault();
-          setIsOpen(false);
-          return true;
-        }
+        if (isHelpOpen) { e.preventDefault(); setIsHelpOpen(false); return true; }
+        if (isSettingsOpen) { e.preventDefault(); setIsSettingsOpen(false); return true; }
         return false;
       }
 
-      switch (e.key) {
-        case " ": // Space
-          e.preventDefault();
-          onPlayPause();
-          return true;
-        case "ArrowRight":
-          e.preventDefault();
-          if (e.ctrlKey || e.metaKey) {
-            onNext();
-          } else {
-            onSeek(Math.min(currentTime + 5, duration));
-          }
-          return true;
-        case "ArrowLeft":
-          e.preventDefault();
-          if (e.ctrlKey || e.metaKey) {
-            onPrev();
-          } else {
-            onSeek(Math.max(currentTime - 5, 0));
-          }
-          return true;
-        case "ArrowUp":
-          e.preventDefault();
-          onVolumeChange(Math.min(volume + 0.1, 1));
-          return true;
-        case "ArrowDown":
-          e.preventDefault();
-          onVolumeChange(Math.max(volume - 0.1, 0));
-          return true;
-        case "l":
-        case "L":
-          e.preventDefault();
-          onToggleMode();
-          return true;
-        case "v":
-        case "V":
-          e.preventDefault();
-          onToggleVolumeDialog();
-          return true;
-        case "s":
-        case "S":
-          e.preventDefault();
-          onToggleSpeedDialog();
-          return true;
+      // Allow close when settings panel is open
+      if (isSettingsOpen) {
+        if (match("toggleShortcuts")) { e.preventDefault(); setIsSettingsOpen(false); return true; }
+        return false;
       }
+
+      if (match("toggleShortcuts")) { e.preventDefault(); setIsHelpOpen((p) => !p); return true; }
+      if (match("toggleSearch")) { e.preventDefault(); onToggleSearch(); return true; }
+      if (match("togglePlaylist")) { e.preventDefault(); onTogglePlaylist(); return true; }
+
+      if (match("playPause")) { e.preventDefault(); onPlayPause(); return true; }
+      if (match("next")) { e.preventDefault(); onNext(); return true; }
+      if (match("prev")) { e.preventDefault(); onPrev(); return true; }
+      if (match("toggleMode")) { e.preventDefault(); onToggleMode(); return true; }
+      if (match("toggleVolumePanel")) { e.preventDefault(); onToggleVolumeDialog(); return true; }
+      if (match("toggleSpeedPanel")) { e.preventDefault(); onToggleSpeedDialog(); return true; }
+      if (match("volumeUp")) { e.preventDefault(); onVolumeChange(Math.min(volume + 0.1, 1)); return true; }
+      if (match("volumeDown")) { e.preventDefault(); onVolumeChange(Math.max(volume - 0.1, 0)); return true; }
+      if (match("seekForward")) { e.preventDefault(); onSeek(Math.min(currentTime + 5, duration)); return true; }
+      if (match("seekBackward")) { e.preventDefault(); onSeek(Math.max(currentTime - 5, 0)); return true; }
 
       return false;
     },
-    50, // Lower priority than SearchModal (100)
+    50,
     true,
   );
 
-if (!isVisible) return null;
+  if (!isVisible) return null;
 
-return createPortal(
-  <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4 select-none font-sans pointer-events-none">
-    <style>{`
-      @keyframes ios-in {
-          0% { opacity: 0; transform: scale(0.95); }
-          100% { opacity: 1; transform: scale(1); }
-      }
-      @keyframes ios-out {
-          0% { opacity: 1; transform: scale(1); }
-          100% { opacity: 0; transform: scale(0.95); }
-      }
-      .animate-in { animation: ios-in 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards; will-change: transform, opacity; }
-      .animate-out { animation: ios-out 0.15s cubic-bezier(0.32, 0.72, 0, 1) forwards; will-change: transform, opacity; }
-    `}</style>
+  return (
+    <>
+      {/* Settings Panel */}
+      <ShortcutSettings
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onBindingsChanged={handleBindingsChanged}
+      />
 
-    {/* Shared backdrop */}
-    <div
-      className={`absolute inset-0 bg-black/20 backdrop-blur-sm transition-opacity duration-300 pointer-events-auto ${isOpen ? "opacity-100" : "opacity-0"}`}
-      onClick={() => setIsOpen(false)}
-    />
+      {/* Help Dialog */}
+      {isHelpOpen && (
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4 select-none font-sans pointer-events-none">
+            <style>{`
+              @keyframes ios-in {
+                0% { opacity: 0; transform: scale(0.95); }
+                100% { opacity: 1; transform: scale(1); }
+              }
+              @keyframes ios-out {
+                0% { opacity: 1; transform: scale(1); }
+                100% { opacity: 0; transform: scale(0.95); }
+              }
+              .animate-help-in { animation: ios-in 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+            `}</style>
 
-    {/* Help Dialog */}
-    {isOpen && (
-      <div
-        className={`
-            relative w-full max-w-2xl pointer-events-auto
-            bg-black/40 backdrop-blur-2xl saturate-150
-            border border-white/10
-            rounded-[32px]
-            shadow-[0_30px_80px_rgba(0,0,0,0.45)]
-            overflow-hidden
-            text-white
-            ${isOpen ? "animate-in" : "animate-out"}
-        `}
-      >
-        {/* Content Container */}
-        <div className="p-8">
-          {/* Header */}
-          <div className="flex items-center gap-4 mb-8">
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold tracking-tight">
-                {dict.keys.title}
-              </h2>
-              <p className="text-white/50 font-medium">
-                {dict.keys.subtitle}
-              </p>
+            <div
+              className="absolute inset-0 bg-black/20 backdrop-blur-sm pointer-events-auto"
+              onClick={() => setIsHelpOpen(false)}
+            />
+
+            <div className="
+              relative w-full max-w-2xl pointer-events-auto
+              bg-black/40 backdrop-blur-2xl saturate-150
+              border border-white/10
+              rounded-[32px]
+              shadow-[0_30px_80px_rgba(0,0,0,0.45)]
+              overflow-hidden text-white
+              animate-help-in
+            ">
+              <div className="p-8">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="flex-1">
+                    <h2 className="text-2xl font-bold tracking-tight">{dict.keys.title}</h2>
+                    <p className="text-white/50 font-medium">{dict.keys.subtitle}</p>
+                  </div>
+                  <button
+                    onClick={() => { setIsHelpOpen(false); reloadBindings(); setIsSettingsOpen(true); }}
+                    className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors text-white/60 hover:text-white"
+                    title="自定义快捷键"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d="M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0Z" stroke="currentColor" strokeWidth="1.5"/>
+                      <path d="M8 10.5V8m0-3h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setIsHelpOpen(false)}
+                    className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M1 1L11 11M1 11L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
+                  {bindings.map((b) => (
+                    <ShortcutItem key={b.action} keys={formatComboDisplay(b.combo)} label={b.label} />
+                  ))}
+                </div>
+
+                {/* Media Session hint */}
+                <div className="mt-6 p-3 rounded-xl bg-white/5 border border-white/5 text-xs text-white/40">
+                  💡 系统级快捷键（游戏中也有效）：键盘媒体键 ▶⏯ ⏭ ⏮
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-white/30 text-xs">
+                  <span>{dict.keys.press} <kbd className="bg-white/10 px-1.5 py-0.5 rounded mx-1 text-white/60">Esc</kbd> {dict.keys.close}</span>
+                  <button
+                    onClick={() => { setIsHelpOpen(false); reloadBindings(); setIsSettingsOpen(true); }}
+                    className="text-white/40 hover:text-white/70 transition-colors flex items-center gap-1"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60">
+                      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+                      <path d="M7 4.5v4m0 1h.01" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                    </svg>
+                    自定义快捷键
+                  </button>
+                </div>
+              </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M1 1L11 11M1 11L11 1"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          </div>
-
-          {/* Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
-            <ShortcutItem keys={["Space"]} label={dict.keys.playPause} />
-            <ShortcutItem keys={["L"]} label={dict.keys.loop} />
-            <ShortcutItem keys={["←", "→"]} label={dict.keys.seek} />
-            <ShortcutItem keys={["Ctrl", "←/→"]} label={dict.keys.prevNext} />
-            <ShortcutItem keys={["↑", "↓"]} label={dict.keys.volume} />
-            <ShortcutItem keys={["V"]} label={dict.keys.volumeDialog} />
-            <ShortcutItem keys={["S"]} label={dict.keys.speedDialog} />
-            <ShortcutItem keys={["Ctrl", "K"]} label={dict.keys.search} />
-            <ShortcutItem keys={["Ctrl", "P"]} label={dict.keys.playlist} />
-            <ShortcutItem keys={["Ctrl", "/"]} label={dict.keys.toggle} />
-          </div>
-
-          {/* Footer Hint */}
-          <div className="mt-8 pt-6 border-t border-white/5 text-center text-white/30 text-xs font-medium tracking-wider uppercase">
-            {dict.keys.press}{" "}
-            <kbd className="font-sans bg-white/10 px-1.5 py-0.5 rounded mx-1 text-white/60">
-              Esc
-            </kbd>{" "}
-            {dict.keys.close}
-          </div>
-        </div>
-      </div>
-    )}
-  </div>,
-  document.body,
-);
+          </div>,
+          document.body,
+        )
+      )}
+    </>
+  );
 };
 
 const ShortcutItem = ({ keys, label }: { keys: string[]; label: string }) => (
