@@ -17,6 +17,8 @@ import { usePlayer } from "./hooks/usePlayer";
 import { useI18n } from "./hooks/useI18n";
 import { keyboardRegistry } from "./services/keyboardRegistry";
 import { loadStaticSongs } from "./services/staticMusic";
+import { loadAudioBlob } from "./services/audioCacheDB";
+import { audioResourceCache } from "./services/cache";
 import MediaSessionController from "./components/MediaSessionController";
 
 const App: React.FC = () => {
@@ -136,6 +138,19 @@ const App: React.FC = () => {
 
   // Search shortcut is now handled by KeyboardShortcuts via custom bindings
 
+  // Pre-fill in-memory audio cache from IndexedDB on startup,
+  // BEFORE any song plays.  This eliminates the async delay:
+  // by the time the user clicks a song, the blob is already in
+  // the in-memory LRU and plays instantly — no IndexedDB await.
+  useEffect(() => {
+    if (!playlist.isReady || playlist.queue.length === 0) return;
+    for (const song of playlist.queue) {
+      if (!song.fileUrl || song.fileUrl.startsWith("blob:")) continue;
+      loadAudioBlob(song.fileUrl).then((blob) => {
+        if (blob) audioResourceCache.set(song.fileUrl, blob);
+      }).catch(() => {});
+    }
+  }, [playlist.isReady, playlist.queue.length]);
 
   const [hasLoadedStaticMusic, setHasLoadedStaticMusic] = useState(false);
   const staticMusicLoadedRef = useRef(false);

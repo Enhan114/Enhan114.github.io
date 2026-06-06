@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Song } from "../types";
+import { deleteAudioBlob } from "../services/audioCacheDB";
+import { audioResourceCache } from "../services/cache";
 import {
   isPreloadDone, markPreloadDone, getPreloadableSongs, preloadAll,
   type PreloadProgress,
@@ -131,18 +133,23 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
     else uncachedIds.add(s.id);
   }
 
-  // First visit: pre-populate cached based on needsLyricsMatch
+  // Verify actual cache state from IndexedDB (not just needsLyricsMatch)
   useEffect(() => {
-    for (const s of allSongs) {
-      if (s.needsLyricsMatch === false) {
-        setSongState(prev => {
-          if (prev.has(s.id)) return prev;
-          const n = new Map(prev);
-          n.set(s.id, { audio: "done", lyrics: "done", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 });
-          return n;
-        });
-      }
-    }
+    if (allSongs.length === 0) return;
+    import("../services/audioCacheDB").then(({ hasAudioBlob }) => {
+      allSongs.forEach((s) => {
+        hasAudioBlob(s.fileUrl).then((hasAudio) => {
+          if (hasAudio && s.needsLyricsMatch === false) {
+            setSongState(prev => {
+              if (prev.has(s.id)) return;
+              const n = new Map(prev);
+              n.set(s.id, { audio: "done", lyrics: "done", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 });
+              return n;
+            });
+          }
+        }).catch(() => {});
+      });
+    }).catch(() => {});
   }, [queue.length]);
 
   // Open logic
@@ -198,17 +205,11 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
       n.delete(id);
       return n;
     });
-    // Delete from persistent cache (IndexedDB + in-memory)
     const song = allSongs.find(s => s.id === id);
     if (song) {
       onLyricsReady(id, []); // reset lyrics flag
-      // Remove audio from IndexedDB and in-memory cache
-      import("../services/audioCacheDB").then(({ deleteAudioBlob }) =>
-        deleteAudioBlob(song.fileUrl).catch(() => {})
-      );
-      import("../services/cache").then(({ audioResourceCache }) =>
-        audioResourceCache.delete(song.fileUrl)
-      ).catch(() => {});
+      audioResourceCache.delete(song.fileUrl); // in-memory LRU
+      deleteAudioBlob(song.fileUrl).catch(() => {}); // IndexedDB
     }
   };
 
