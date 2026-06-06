@@ -879,8 +879,19 @@ export const usePlayer = ({
       };
     }
 
-    // Check cache first
-    const cachedBlob = audioResourceCache.get(fileUrl);
+    // Check in-memory cache first
+    let cachedBlob = audioResourceCache.get(fileUrl);
+    if (!cachedBlob) {
+      // Fallback to IndexedDB (persistent cache from preload)
+      try {
+        const { loadAudioBlob } = await import("../services/audioCacheDB");
+        const persisted = await loadAudioBlob(fileUrl);
+        if (persisted) {
+          audioResourceCache.set(fileUrl, persisted);
+          cachedBlob = persisted;
+        }
+      } catch { /* IndexedDB not available */ }
+    }
     if (cachedBlob) {
       releaseObjectUrl();
       currentObjectUrl = URL.createObjectURL(cachedBlob);
@@ -894,9 +905,8 @@ export const usePlayer = ({
     }
 
     // Use the original URL directly - let browser handle native buffering
-    // This is the most reliable approach and works for any file size
     releaseObjectUrl();
-    setResolvedAudioSrc(null); // Use original fileUrl via fallback in audio element
+    setResolvedAudioSrc(null);
     setIsBuffering(true);
     setBufferProgress(0);
 

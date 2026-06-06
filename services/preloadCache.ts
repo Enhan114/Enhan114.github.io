@@ -60,6 +60,7 @@ async function fetchAudioWithProgress(
     onFileProgress({ loaded: 0, total: 0, speed: 0 });
     const blob = await response.blob();
     cache.set(url, blob);
+  try { const { saveAudioBlob } = await import("./audioCacheDB"); await saveAudioBlob(url, blob); } catch {}
     onFileProgress({ loaded: blob.size, total: blob.size, speed: 0 });
     return;
   }
@@ -92,6 +93,7 @@ async function fetchAudioWithProgress(
 
   const blob = new Blob(chunks);
   cache.set(url, blob);
+  try { const { saveAudioBlob } = await import("./audioCacheDB"); await saveAudioBlob(url, blob); } catch {}
   onFileProgress({ loaded: total, total, speed: 0 });
 }
 
