@@ -20,6 +20,7 @@ import {
   getNeteaseAudioUrl,
 } from "../services/lyricsService";
 import { audioResourceCache } from "../services/cache";
+import { isBlocked } from "../services/blocklist";
 import { useI18n } from "./useI18n";
 
 // Levenshtein distance for fuzzy matching
@@ -158,13 +159,16 @@ export const usePlaylist = () => {
   }, [appendSongs]);
 
   // Merge static songs into the queue: add only songs whose id is not
-  // already present.  This ensures newly-added music files show up on
-  // the next page load even when IndexedDB still holds an older snapshot.
+  // already present and not in the blocklist.  This ensures newly-added
+  // music files show up on the next page load even when IndexedDB still
+  // holds an older snapshot.
   const mergeStaticSongs = useCallback((songs: Song[]) => {
     if (songs.length === 0) return;
     setQueue((prev) => {
       const existing = new Set(prev.map((s) => s.id));
-      const fresh = songs.filter((s) => !existing.has(s.id));
+      const fresh = songs.filter(
+        (s) => !existing.has(s.id) && !isBlocked(s.id),
+      );
       if (fresh.length === 0) return prev;
       return [...prev, ...fresh];
     });

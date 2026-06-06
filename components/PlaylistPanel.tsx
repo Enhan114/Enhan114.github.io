@@ -11,7 +11,7 @@ import {
   SelectAllIcon,
   BlockIcon,
 } from "./Icons";
-import { isBlocked, blockSong } from "../services/blocklist";
+import { blockSong } from "../services/blocklist";
 import { useI18n } from "../hooks/useI18n";
 import { useKeyboardScope } from "../hooks/useKeyboardScope";
 import ImportMusicDialog from "./ImportMusicDialog";
@@ -735,7 +735,6 @@ const PlaylistPanel = React.memo(({
                                     const isCurrent = song.id === currentSongId;
                                     const isSelected = selectedIds.has(song.id);
                                     const isDrag = drag?.id === song.id;
-                                    const blocked = isBlocked(song.id);
 
                                     return (
                                         <div
@@ -750,8 +749,7 @@ const PlaylistPanel = React.memo(({
                                             onClick={() => {
                                                 if (skipRef.current) return;
                                                 if (isEditing) toggleSelection(song.id);
-                                                else if (isBlockMode) { e.stopPropagation(); blockSong(song.id); }
-                                                else if (blocked) return; // blocked songs can't be played
+                                                else if (isBlockMode) { e.stopPropagation(); blockSong(song.id); onRemove([song.id]); }
                                                 else onPlay(index);
                                             }}
                                             className={`
@@ -783,29 +781,22 @@ const PlaylistPanel = React.memo(({
                                             )}
 
                                             {/* Cover & Indicator */}
-                                            <div className={`relative ${blocked ? 'opacity-40 saturate-0' : ''}`}>
+                                            <div className="relative">
                                                 <Art
                                                     src={song.coverUrl}
                                                     alt={song.title}
-                                                    dim={isCurrent && !isEditing && !blocked}
+                                                    dim={isCurrent && !isEditing}
                                                 />
 
                                                 {/* Block overlay — show in block mode on hover */}
-                                                {isBlockMode && !blocked && (
+                                                {isBlockMode && (
                                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/40 rounded-xl">
                                                         <BlockIcon className="w-5 h-5 text-red-400" />
                                                     </div>
                                                 )}
 
-                                                {/* Blocked indicator — always show for blocked songs */}
-                                                {blocked && (
-                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl">
-                                                        <BlockIcon className="w-4 h-4 text-white/60" />
-                                                    </div>
-                                                )}
-
                                                 {/* Redesigned Now Playing Indicator (Equalizer) */}
-                                                {isCurrent && !isEditing && !blocked && (
+                                                {isCurrent && !isEditing && (
                                                     <div className="absolute inset-0 flex items-center justify-center gap-[3px]">
                                                         <div className="w-[3px] bg-current rounded-full animate-[eq-bounce_1s_ease-in-out_infinite]" style={{ height: '12px', color: accentColor }}></div>
                                                         <div className="w-[3px] bg-current rounded-full animate-[eq-bounce_1s_ease-in-out_infinite_0.2s]" style={{ height: '20px', color: accentColor }}></div>
@@ -815,9 +806,9 @@ const PlaylistPanel = React.memo(({
                                             </div>
 
                                             {/* Text */}
-                                             <div className={`flex-1 min-w-0 flex flex-col justify-center gap-0.5 ${blocked ? 'opacity-30' : ''}`}>
-                                                 <div className={`text-[15px] font-semibold truncate leading-tight transition-colors duration-300`}
-                                                     style={{ color: blocked ? 'rgba(255,255,255,0.3)' : isCurrent ? accentColor : 'rgba(255,255,255,0.9)' }}>
+                                             <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+                                                 <div className="text-[15px] font-semibold truncate leading-tight transition-colors duration-300"
+                                                     style={{ color: isCurrent ? accentColor : 'rgba(255,255,255,0.9)' }}>
                                                      {song.title}
                                                  </div>
                                                  <div className="text-[13px] text-white/50 truncate font-medium">
