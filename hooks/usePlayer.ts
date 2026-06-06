@@ -463,23 +463,27 @@ export const usePlayer = ({
         return [...metadataLines, ...cloudParsed].sort((a, b) => a.time - b.time);
       }
 
-      // Build a text→TTML line map for word-data grafting
+      // Build a text→TTML line map for word-data grafting.
+      // Match by normalised text (strip spaces, punctuation, lowercase).
       const ttmlByText = new Map<string, (typeof cloudParsed)[0]>();
+      const normalise = (s: string) =>
+        s.replace(/[\s　,，、。！？：；""''（）【】「」…—\-\.\!\?\:;\(\)\[\]""'']/g, "").toLowerCase();
       for (const cl of cloudParsed) {
         if (cl.isMetadata || cl.isInterlude || cl.isBackground) continue;
         if (!cl.words?.length) continue;
-        const key = cl.text.replace(/\s+/g, "").toLowerCase();
-        ttmlByText.set(key, cl);
+        ttmlByText.set(normalise(cl.text), cl);
       }
 
       // Merge: keep local line timing, graft TTML word data
+      let graftedCount = 0;
       const merged = existingLyrics.map((local) => {
         if (local.isMetadata || local.isInterlude || local.isBackground) {
           return local;
         }
-        const key = local.text.replace(/\s+/g, "").toLowerCase();
+        const key = normalise(local.text);
         const match = ttmlByText.get(key);
         if (match && match.words && match.words.length > 0) {
+          graftedCount++;
           // Graft TTML word timing onto local line timing
           // Map TTML word times into the local line's time window
           const localStart = local.time;
@@ -508,6 +512,10 @@ export const usePlayer = ({
         }
         return local;
       });
+
+      console.log(
+        `[lyrics] TTML grafted onto ${graftedCount}/${existingLyrics.filter(l => !l.isMetadata && !l.isInterlude && !l.isBackground).length} local lines`,
+      );
 
       const metadataCount = result.metadata.length;
       const metadataLines = result.metadata.map((text, idx) => ({
@@ -610,7 +618,12 @@ export const usePlayer = ({
         }
 
         if (merged && merged.length > 0) {
-          // Cloud data (TTML/YRC) has per-word timing — prefer it.
+          const wordCount = merged.reduce(
+            (s, l) => s + (l.words?.length ?? 0), 0,
+          );
+          console.log(
+            `[lyrics] Cloud match success: ${merged.length} lines, ${wordCount} timed words`,
+          );
           updateSongInQueue(songId, {
             lyrics: merged,
             needsLyricsMatch: false,
