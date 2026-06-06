@@ -444,17 +444,46 @@ export const fetchNeteaseSong = async (
 export const searchAndMatchLyrics = async (
   title: string,
   artist: string,
+  durationSec?: number,
 ): Promise<MatchedLyricsResult | null> => {
   try {
-    const songs = await searchNetEase(`${title} ${artist}`, { limit: 5 });
+    const songs = await searchNetEase(`${title} ${artist}`, { limit: 10 });
 
     if (songs.length === 0) {
       console.warn("No songs found on Cloud");
       return null;
     }
 
-    const songId = songs[0].id;
-    console.log(`Found Song ID: ${songId}`);
+    // If we know the local file's duration, pick the NetEase result whose
+    // duration is closest.  This avoids matching a live/remix/alternate
+    // recording whose TTML timing would be out of sync with the local audio.
+    let bestSong = songs[0];
+    if (durationSec && durationSec > 0) {
+      let bestDiff = Infinity;
+      for (const s of songs) {
+        // NetEase dt is in milliseconds
+        const neteaseSec = (s.duration ?? 0) / 1000;
+        if (neteaseSec <= 0) continue;
+        const diff = Math.abs(neteaseSec - durationSec);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestSong = s;
+        }
+      }
+      if (bestDiff < 15) {
+        // Only use duration-matched result if it's within 15 seconds
+        console.log(
+          `Duration-matched: ${bestSong.name} (${((bestSong.duration ?? 0) / 1000).toFixed(0)}s ≈ ${durationSec.toFixed(0)}s, diff ${bestDiff.toFixed(1)}s)`,
+        );
+      } else {
+        console.log(
+          `Duration match too far (best diff ${bestDiff.toFixed(1)}s), falling back to first result`,
+        );
+      }
+    }
+
+    const songId = bestSong.id;
+    console.log(`Matched Song ID: ${songId} — ${bestSong.name}`);
 
     const lyricsResult = await fetchLyricsById(songId);
     return lyricsResult;

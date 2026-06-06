@@ -595,8 +595,12 @@ export const usePlayer = ({
             merged = mergeLyricsWithMetadata(raw, existingLyrics);
           }
         } else {
+          // Pass local audio duration so NetEase search can pick the
+          // recording whose duration is closest — avoids matching a
+          // different version with misaligned timing.
+          const audioDuration = audioRef.current?.duration ?? 0;
           const result = await withTimeout(
-            searchAndMatchLyrics(songTitle, songArtist),
+            searchAndMatchLyrics(songTitle, songArtist, audioDuration || undefined),
             MATCH_TIMEOUT_MS,
           );
           if (cancelled) return;
