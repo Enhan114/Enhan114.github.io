@@ -368,12 +368,28 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-4 border-t border-white/5">
-            <button
-              onClick={handleReset}
-              className="text-xs text-white/30 hover:text-white/60 transition-colors px-2 py-1"
-            >
-              恢复默认
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={handleReset} className="text-xs text-white/30 hover:text-white/60 transition-colors px-2 py-1">
+                恢复默认
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm("确定清除所有缓存？\n\n包括屏蔽列表、歌词数据、快捷键设置。\n页面将自动刷新。")) {
+                    window.localStorage.clear();
+                    try {
+                      const delReq = indexedDB.deleteDatabase("aura-music");
+                      delReq.onsuccess = () => window.location.reload();
+                      delReq.onerror = () => window.location.reload();
+                    } catch {
+                      window.location.reload();
+                    }
+                  }
+                }}
+                className="text-xs text-red-400/50 hover:text-red-400 transition-colors px-2 py-1"
+              >
+                清除缓存
+              </button>
+            </div>
             <span className="text-xs text-white/20">
               {recording ? "按下组合键 · 松开后保存" : "单击修改 · 自动保存"}
             </span>

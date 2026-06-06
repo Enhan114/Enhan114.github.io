@@ -139,11 +139,31 @@ export const usePlayer = ({
     }
   }, [playMode, currentSong?.id, queue]);
 
+  const fadeOutRef = useRef<number>(0);
+
   const togglePlay = useCallback(() => {
     if (!audioRef.current) return;
     if (playState === PlayState.PLAYING) {
-      audioRef.current.pause();
-      setPlayState(PlayState.PAUSED);
+      // Fade out volume over ~300ms then pause
+      const audio = audioRef.current;
+      const startVol = audio.volume;
+      const startTime = performance.now();
+      const duration = 300; // ms
+      cancelAnimationFrame(fadeOutRef.current);
+      const fadeStep = () => {
+        const elapsed = performance.now() - startTime;
+        const t = Math.min(1, elapsed / duration);
+        // Ease-out curve for smooth fade
+        audio.volume = startVol * (1 - t * t);
+        if (t < 1) {
+          fadeOutRef.current = requestAnimationFrame(fadeStep);
+        } else {
+          audio.pause();
+          audio.volume = startVol; // restore for next play
+          setPlayState(PlayState.PAUSED);
+        }
+      };
+      fadeOutRef.current = requestAnimationFrame(fadeStep);
     } else {
       const duration = audioRef.current.duration || 0;
       const isAtEnd =

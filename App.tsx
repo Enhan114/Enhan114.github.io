@@ -7,6 +7,8 @@ import LyricsView from "./components/LyricsView";
 import PlaylistPanel from "./components/PlaylistPanel";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
 import ShortcutSettings from "./components/ShortcutSettings";
+import WelcomeDialog from "./components/WelcomeDialog";
+import PreloadDialog from "./components/PreloadDialog";
 import TopBar from "./components/TopBar";
 import SearchModal from "./components/SearchModal";
 import { ShortcutBinding, loadBindings } from "./services/shortcutSettings";
@@ -345,6 +347,8 @@ const App: React.FC = () => {
 
   return (
     <div className="relative w-full h-screen flex flex-col overflow-hidden">
+      <WelcomeDialog />
+      <PreloadDialog queue={playlist.queue} onLyricsReady={(id, lyrics) => { playlist.updateSongInQueue(id, { lyrics, needsLyricsMatch: false }); }} />
       <FluidBackground
         key={isMobileLayout ? "mobile" : "desktop"}
         colors={currentSong?.colors || []}
