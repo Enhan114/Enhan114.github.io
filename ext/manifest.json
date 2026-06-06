@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Aura Music Control",
+  "version": "1.0",
+  "description": "全局快捷键控制 Aura Music — 支持媒体键和自定义组合键",
+  "permissions": ["tabs", "scripting"],
+  "host_permissions": [
+    "*://webmusic.cc.cd/*",
+    "*://killmyworld.github.io/*",
+    "*://killmywor.gitee.io/*",
+    "*://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://webmusic.cc.cd/*",
+        "*://killmyworld.github.io/*",
+        "*://killmywor.gitee.io/*",
+        "*://localhost/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "prev-track": {
+      "suggested_key": { "default": "MediaPrevTrack" },
+      "description": "上一首",
+      "global": true
+    },
+    "play-pause": {
+      "suggested_key": { "default": "MediaPlayPause" },
+      "description": "播放 / 暂停",
+      "global": true
+    },
+    "next-track": {
+      "suggested_key": { "default": "MediaNextTrack" },
+      "description": "下一首",
+      "global": true
+    }
+  }
+}
