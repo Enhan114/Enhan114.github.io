@@ -799,50 +799,53 @@ export class LyricLine implements ILyricLine {
   }
 
   /**
-   * Draw all timed words with a single continuous sweep gradient.
+   * Draw a row of timed words with a single continuous sweep gradient.
    *
-   * Instead of per-word gradients (which produce a "jumping" fill that
-   * hops from word to word), we compute one sweep position that moves
-   * smoothly from the first word to the last, using the per-word timing
-   * data just to control the speed.
+   * The sweep position is computed from the full line's word timings so
+   * it moves smoothly from the first word to the last.  Only the words
+   * in `activeWords` (the current row) are actually rendered.
    */
   private drawActiveWords(activeWords: WordLayout[], currentTime: number) {
+    if (!this.layout) return;
     const isBg = !!this.lyricLine.isBackground;
-    const allWords = this.layout!.words.filter(
-      (w) => w.text.trim() || w.isVerbatim,
-    );
 
     // --- Emphasised words (rare: long syllables with glow) ---
     const emphasizedWords: Array<{ word: WordLayout; index: number }> = [];
     activeWords.forEach((word, index) => {
       const elapsed = currentTime - word.startTime;
-      const animationDuration = this.getWordAnimationDuration(
-        word, activeWords, index,
-      );
+      const animDur = this.getWordAnimationDuration(word, activeWords, index);
       if (
         this.shouldEmphasizeWord(word) &&
         elapsed >= -EMPHASIS_ENTRY_LEAD &&
-        elapsed < animationDuration
+        elapsed < animDur
       ) {
         emphasizedWords.push({ word, index });
       }
     });
+    if (emphasizedWords.length === activeWords.length) {
+      // All words are emphasised — draw them individually
+      for (const { word, index } of emphasizedWords) {
+        this.drawEmphasizedWord(word, activeWords, index, currentTime);
+      }
+      return;
+    }
 
-    // --- Continuous sweep across the ENTIRE row ---
-    if (allWords.length === 0) return;
+    // --- Continuous sweep position (computed from full-line timings) ---
+    const timedWords = this.layout.words.filter(
+      (w) => w.isVerbatim || w.text.trim(),
+    );
+    if (timedWords.length === 0) return;
 
-    const textStartX = allWords[0].x;
-    const textEndX = allWords[allWords.length - 1].x +
-      allWords[allWords.length - 1].width;
+    const textStartX = timedWords[0].x;
+    const textEndX =
+      timedWords[timedWords.length - 1].x +
+      timedWords[timedWords.length - 1].width;
     const textWidth = Math.max(1, textEndX - textStartX);
 
-    // Map currentTime to a sweep X via word timing
-    const firstWord = allWords[0];
-    const lastWord = allWords[allWords.length - 1];
-    const lineStart = firstWord.startTime;
+    const lineStart = timedWords[0].startTime;
     const lineEnd = Math.max(
       lineStart + 0.01,
-      lastWord.endTime || lineStart + 4,
+      timedWords[timedWords.length - 1].endTime || lineStart + 4,
     );
 
     let sweepX: number;
@@ -851,11 +854,9 @@ export class LyricLine implements ILyricLine {
     } else if (currentTime >= lineEnd) {
       sweepX = textEndX;
     } else {
-      // Find the word whose time window contains currentTime and
-      // interpolate its X position smoothly.
       sweepX = textStartX;
-      for (let i = 0; i < allWords.length; i++) {
-        const w = allWords[i];
+      for (let i = 0; i < timedWords.length; i++) {
+        const w = timedWords[i];
         if (currentTime >= w.startTime && currentTime < w.endTime) {
           const wp = clamp01(
             (currentTime - w.startTime) /
@@ -864,36 +865,33 @@ export class LyricLine implements ILyricLine {
           sweepX = w.x + wp * w.width;
           break;
         } else if (currentTime < w.startTime && i > 0) {
-          // Between words — hold at end of previous word
-          const prev = allWords[i - 1];
-          sweepX = prev.x + prev.width;
+          sweepX = timedWords[i - 1].x + timedWords[i - 1].width;
           break;
-        } else if (i === allWords.length - 1) {
+        } else if (i === timedWords.length - 1) {
           sweepX = w.x + w.width;
         }
       }
     }
 
-    // Determine colours from user setting
+    // Colours
     const baseColor = getLyricsColor();
+    const pastColor = isBg
+      ? `rgba(255,255,255,${BG_PAST_ALPHA})`
+      : baseColor;
     const leftColor = isBg
       ? `rgba(255,255,255,${BG_ACTIVE_ALPHA})`
       : baseColor;
     const rightColor = isBg
       ? `rgba(255,255,255,${BG_FUTURE_ALPHA})`
       : futureLyricsColor(0.5);
-    const pastColor = isBg
-      ? `rgba(255,255,255,${BG_PAST_ALPHA})`
-      : baseColor;
 
-    // Compute lift for each word (float-up animation)
+    // Layout
     const scale = isBg ? BG_FONT_SCALE : 1;
     const { mainHeight } = getFonts(this.isMobile, scale);
     const FLOAT_UP = 0.05 * mainHeight;
     const texPadX = 4;
     const texPadTop = 2;
 
-    // Use ONE large gradient that covers the full text extent
     const gradW = Math.ceil(textWidth + texPadX * 2);
     const gradH = Math.ceil(mainHeight + texPadTop * 2 + 4);
     const physW = Math.ceil(gradW * this.pixelRatio);
@@ -911,20 +909,22 @@ export class LyricLine implements ILyricLine {
     // Single continuous gradient
     const normalizedEdge = clamp01((sweepX - textStartX) / textWidth);
     const fadeRatio = isBg ? 0.18 : 0.12;
-    const grad = this.liftCtx.createLinearGradient(texPadX, 0, texPadX + gradW, 0);
+    const grad = this.liftCtx.createLinearGradient(
+      texPadX, 0, texPadX + gradW, 0,
+    );
     grad.addColorStop(0, pastColor);
     grad.addColorStop(Math.max(0, normalizedEdge - fadeRatio), leftColor);
     grad.addColorStop(Math.min(1, normalizedEdge + fadeRatio), rightColor);
     this.liftCtx.fillStyle = grad;
     this.liftCtx.fillRect(0, 0, gradW, gradH);
 
-    // Clip to each word texture (destination-in clips to ALL textures combined)
+    // Clip to word textures — only for words in the current row
     this.liftCtx.globalCompositeOperation = "destination-in";
-    const wordToTex = this.wordTextures;
-    if (wordToTex) {
-      for (let i = 0; i < allWords.length; i++) {
-        const w = allWords[i];
-        const tex = wordToTex[i];
+    if (this.wordTextures) {
+      for (const w of activeWords) {
+        const texIdx = this.layout!.words.indexOf(w);
+        if (texIdx < 0) continue;
+        const tex = this.wordTextures[texIdx];
         if (!tex) continue;
         const elapsed = currentTime - w.startTime;
         const duration = Math.max(0.001, w.endTime - w.startTime);
@@ -938,23 +938,26 @@ export class LyricLine implements ILyricLine {
         const dy = texPadTop - lift;
         this.liftCtx.drawImage(
           tex.canvas,
-          0, 0, tex.width * this.pixelRatio, tex.height * this.pixelRatio,
-          dx, dy, tex.width, tex.height,
+          0, 0,
+          tex.width * this.pixelRatio,
+          tex.height * this.pixelRatio,
+          dx, dy,
+          tex.width, tex.height,
         );
       }
     }
     this.liftCtx.globalCompositeOperation = "source-over";
     this.liftCtx.restore();
 
-    // Blit result
+    // Blit onto main canvas
     this.ctx.drawImage(
       this.liftCanvas,
       0, 0, physW, physH,
-      textStartX - texPadX, allWords[0].y - texPadTop,
+      textStartX - texPadX, activeWords[0].y - texPadTop,
       gradW, gradH,
     );
 
-    // --- Emphasized words on top (subtle glow + bounce) ---
+    // Emphasised words on top
     for (const { word, index } of emphasizedWords) {
       this.drawEmphasizedWord(word, activeWords, index, currentTime);
     }
