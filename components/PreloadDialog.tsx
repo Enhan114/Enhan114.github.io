@@ -85,7 +85,6 @@ const SongItem: React.FC<SongItemProps> = ({ song, side, onAction, loading, stat
       {/* Action button */}
       <button
         onClick={() => onAction(song.id)}
-        disabled={loading}
         className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all
           ${side === "cached"
             ? "text-white/20 hover:text-red-400 hover:bg-red-400/10"
@@ -112,6 +111,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
   const [show, setShow] = useState(false);
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const loadingRef = React.useRef(false);
   const [progress, setProgress] = useState<PreloadProgress | null>(null);
   const [songState, setSongState] = useState<Map<string, {
     audio: string; lyrics: string;
@@ -217,7 +217,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
     <div className="fixed inset-0 z-[10001] flex items-center justify-center px-4 select-none font-sans">
       <div
         className={`absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}
-        onClick={loading ? undefined : close}
+        onClick={close}
       />
       <div
         className={`relative w-full max-w-2xl max-h-[80vh] flex flex-col bg-black/50 backdrop-blur-3xl saturate-150 border border-white/10 rounded-[28px] shadow-[0_30px_80px_rgba(0,0,0,0.5)] text-white transition-all duration-300 ${visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
@@ -231,8 +231,8 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
                 {loading ? "下载中..." : "左侧已缓存 · 右侧待下载 · 实时同步"}
               </p>
             </div>
-            <button onClick={close} disabled={loading}
-              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center disabled:opacity-20">
+            <button onClick={close}
+              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center">
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path d="M1 1L11 11M1 11L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
               </svg>
@@ -307,8 +307,8 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
 
         {/* Footer */}
         <div className="shrink-0 p-4 pt-1 flex items-center justify-center">
-          <button onClick={close} disabled={loading}
-            className="py-2 px-6 text-xs text-white/25 hover:text-white/40 transition-colors disabled:opacity-10">
+          <button onClick={close}
+            className="py-2 px-6 text-xs text-white/25 hover:text-white/40 transition-colors">
             关闭
           </button>
         </div>
