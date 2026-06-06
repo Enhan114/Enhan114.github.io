@@ -501,19 +501,23 @@ export const usePlayer = ({
       setMatchStatus("success");
     };
 
-    if (existingLyrics.length > 0) {
-      markMatchSuccess();
-      return;
-    }
-
+    // Local LRC is a fallback — if cloud matching hasn't been tried yet,
+    // always attempt it so we can get TTML/YRC with per-word timing.
     if (!needsLyricsMatch) {
-      markMatchFailed();
+      // Already matched (or explicitly opted out).
+      if (existingLyrics.length > 0) {
+        markMatchSuccess();
+      } else {
+        markMatchFailed();
+      }
       return;
     }
 
     const fetchLyrics = async () => {
       setMatchStatus("matching");
       try {
+        let merged: ReturnType<typeof mergeLyricsWithMetadata> | null = null;
+
         if (isNeteaseSong && songNeteaseId) {
           const raw = await withTimeout(
             fetchLyricsById(songNeteaseId),
@@ -521,13 +525,7 @@ export const usePlayer = ({
           );
           if (cancelled) return;
           if (raw) {
-            updateSongInQueue(songId, {
-              lyrics: mergeLyricsWithMetadata(raw),
-              needsLyricsMatch: false,
-            });
-            markMatchSuccess();
-          } else {
-            markMatchFailed();
+            merged = mergeLyricsWithMetadata(raw);
           }
         } else {
           const result = await withTimeout(
@@ -536,18 +534,37 @@ export const usePlayer = ({
           );
           if (cancelled) return;
           if (result) {
-            updateSongInQueue(songId, {
-              lyrics: mergeLyricsWithMetadata(result),
-              needsLyricsMatch: false,
-            });
-            markMatchSuccess();
-          } else {
-            markMatchFailed();
+            merged = mergeLyricsWithMetadata(result);
           }
+        }
+
+        if (merged && merged.length > 0) {
+          // Cloud data (TTML/YRC) has per-word timing — prefer it.
+          updateSongInQueue(songId, {
+            lyrics: merged,
+            needsLyricsMatch: false,
+          });
+          markMatchSuccess();
+        } else if (existingLyrics.length > 0) {
+          // Cloud match failed, but we have local LRC — keep it.
+          updateSongInQueue(songId, {
+            needsLyricsMatch: false,
+          });
+          markMatchSuccess();
+        } else {
+          markMatchFailed();
         }
       } catch (error) {
         console.warn("Lyrics matching failed:", error);
-        markMatchFailed();
+        if (existingLyrics.length > 0) {
+          // Keep local LRC as fallback
+          updateSongInQueue(songId, {
+            needsLyricsMatch: false,
+          });
+          markMatchSuccess();
+        } else {
+          markMatchFailed();
+        }
       }
     };
 
