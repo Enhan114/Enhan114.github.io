@@ -198,8 +198,18 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
       n.delete(id);
       return n;
     });
-    // Also clear the lyrics flag so the song goes back to uncached
-    onLyricsReady(id, []);
+    // Delete from persistent cache (IndexedDB + in-memory)
+    const song = allSongs.find(s => s.id === id);
+    if (song) {
+      onLyricsReady(id, []); // reset lyrics flag
+      // Remove audio from IndexedDB and in-memory cache
+      import("../services/audioCacheDB").then(({ deleteAudioBlob }) =>
+        deleteAudioBlob(song.fileUrl).catch(() => {})
+      );
+      import("../services/cache").then(({ audioResourceCache }) =>
+        audioResourceCache.delete(song.fileUrl)
+      ).catch(() => {});
+    }
   };
 
   const deleteAllCached = () => {
