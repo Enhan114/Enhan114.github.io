@@ -1,6 +1,10 @@
 import { LyricLine as LyricLineType } from "../../types";
 import { SpringConfig, SpringSystem } from "../../services/springSystem";
 import { ILyricLine } from "./ILyricLine";
+import {
+  getLyricsColor,
+  futureLyricsColor,
+} from "../../services/lyricsColorSettings";
 
 const EMPHASIS_ENTRY_LEAD = 0.4;
 const EMPHASIS_MIN_DURATION = 1.5;
@@ -717,10 +721,11 @@ export class LyricLine implements ILyricLine {
             `rgba(255, 255, 255, ${BG_FUTURE_ALPHA})`,
           );
         } else {
-          gradient.addColorStop(Math.max(0, p), "#FFFFFF");
+          const c = getLyricsColor();
+          gradient.addColorStop(Math.max(0, p), c);
           gradient.addColorStop(
             Math.min(1, p + 0.12),
-            "rgba(255, 255, 255, 0.5)",
+            futureLyricsColor(0.5),
           );
         }
         this.ctx.fillStyle = gradient;
@@ -869,16 +874,17 @@ export class LyricLine implements ILyricLine {
       }
     }
 
-    // Determine colours
+    // Determine colours from user setting
+    const baseColor = getLyricsColor();
     const leftColor = isBg
       ? `rgba(255,255,255,${BG_ACTIVE_ALPHA})`
-      : "#FFFFFF";
+      : baseColor;
     const rightColor = isBg
       ? `rgba(255,255,255,${BG_FUTURE_ALPHA})`
-      : "rgba(255,255,255,0.5)";
+      : futureLyricsColor(0.5);
     const pastColor = isBg
       ? `rgba(255,255,255,${BG_PAST_ALPHA})`
-      : "#FFFFFF";
+      : baseColor;
 
     // Compute lift for each word (float-up animation)
     const scale = isBg ? BG_FONT_SCALE : 1;

@@ -10,6 +10,8 @@ import {
   resetBindings,
   ParsedCombo,
 } from "../services/shortcutSettings";
+import { getLyricsColor, setLyricsColor } from "../services/lyricsColorSettings";
+import ColorPicker from "./ColorPicker";
 
 // ---------------------------------------------------------------------------
 //  Props
@@ -38,11 +40,7 @@ const GROUPS: Group[] = [
   },
   {
     title: "音量",
-    actions: ["volumeUp", "volumeDown", "toggleVolumePanel"],
-  },
-  {
-    title: "界面",
-    actions: ["toggleMode", "togglePlaylist", "toggleSearch", "toggleShortcuts", "toggleSpeedPanel"],
+    actions: ["volumeUp", "volumeDown"],
   },
 ];
 
@@ -58,6 +56,12 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
   const [bindings, setBindings] = useState<ShortcutBinding[]>(() => loadBindings());
   const [recording, setRecording] = useState<ShortcutAction | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
+  const [lyricColor, setLyricColorState] = useState(getLyricsColor);
+
+  const handleColorChange = useCallback((hex: string) => {
+    setLyricColorState(hex);
+    setLyricsColor(hex);
+  }, []);
 
   // --- Keyup-based recording state ---
   // Keys are accumulated on keydown; the combo is finalised on keyup.
@@ -247,7 +251,7 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
 
       {/* Panel */}
       <div className="
-        relative w-full max-w-lg max-h-[85vh] overflow-y-auto
+        relative w-full max-w-lg max-h-[85vh] overflow-y-auto no-scrollbar
         bg-black/50 backdrop-blur-3xl saturate-150
         border border-white/10
         rounded-[28px]
@@ -351,6 +355,11 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
               </div>
             </div>
           ))}
+
+          {/* Lyrics colour */}
+          <div className="mt-4 pt-4 border-t border-white/5">
+            <ColorPicker value={lyricColor} onChange={handleColorChange} />
+          </div>
 
           {/* Footer */}
           <div className="flex items-center justify-between pt-4 border-t border-white/5">
