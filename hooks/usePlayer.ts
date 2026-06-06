@@ -592,6 +592,9 @@ export const usePlayer = ({
       setMatchStatus("matching");
       try {
         let merged: ReturnType<typeof mergeLyricsWithMetadata> | null = null;
+        let cloudArtist: string | undefined;
+        let cloudTitle: string | undefined;
+        let cloudAlbum: string | undefined;
 
         if (isNeteaseSong && songNeteaseId) {
           const raw = await withTimeout(
@@ -603,9 +606,6 @@ export const usePlayer = ({
             merged = mergeLyricsWithMetadata(raw, existingLyrics);
           }
         } else {
-          // Pass local audio duration so NetEase search can pick the
-          // recording whose duration is closest — avoids matching a
-          // different version with misaligned timing.
           const audioDuration = audioRef.current?.duration ?? 0;
           const result = await withTimeout(
             searchAndMatchLyrics(songTitle, songArtist, audioDuration || undefined),
@@ -614,6 +614,11 @@ export const usePlayer = ({
           if (cancelled) return;
           if (result) {
             merged = mergeLyricsWithMetadata(result, existingLyrics);
+            // For local files, the artist/title came from the filename.
+            // Use the cloud-matched metadata instead — it's more accurate.
+            cloudArtist = result.matchedArtist;
+            cloudTitle = result.matchedTitle;
+            cloudAlbum = result.matchedAlbum;
           }
         }
 
@@ -624,10 +629,14 @@ export const usePlayer = ({
           console.log(
             `[lyrics] Cloud match success: ${merged.length} lines, ${wordCount} timed words`,
           );
-          updateSongInQueue(songId, {
+          const updates: Partial<Song> = {
             lyrics: merged,
             needsLyricsMatch: false,
-          });
+          };
+          if (cloudArtist) updates.artist = cloudArtist;
+          if (cloudTitle) updates.title = cloudTitle;
+          if (cloudAlbum) updates.album = cloudAlbum;
+          updateSongInQueue(songId, updates);
           markMatchSuccess();
         } else if (existingLyrics.length > 0) {
           // Cloud match failed, but we have local LRC — keep it.

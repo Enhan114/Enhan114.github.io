@@ -48,6 +48,10 @@ export interface MatchedLyricsResult {
   tLrc?: string;
   ttml?: string;
   metadata: string[];
+  /** Best-match artist from NetEase search (corrects filename guesses) */
+  matchedArtist?: string;
+  matchedTitle?: string;
+  matchedAlbum?: string;
 }
 
 export interface NeteaseTrackInfo {
@@ -488,6 +492,11 @@ export const searchAndMatchLyrics = async (
     console.log(`Matched Song ID: ${songId} — ${bestSong.name}`);
 
     const lyricsResult = await fetchLyricsById(songId);
+    if (lyricsResult) {
+      lyricsResult.matchedArtist = bestSong.artist;
+      lyricsResult.matchedTitle = bestSong.title;
+      lyricsResult.matchedAlbum = bestSong.album;
+    }
     return lyricsResult;
   } catch (error) {
     console.error("Cloud lyrics match failed:", error);
