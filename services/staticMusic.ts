@@ -62,7 +62,11 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
         const text = await fetchLyricsWithCache(lyricsUrl);
         if (text.trim().length > 0) {
           lyrics = parseLyrics(text);
-          needsLyricsMatch = false;
+          // Keep needsLyricsMatch = true so the app also attempts cloud
+          // matching (NetEase → YRC / TTML).  Cloud data carries per-word
+          // timing (逐字时间) that plain LRC files lack, enabling true
+          // word-by-word fill animation.
+          needsLyricsMatch = true;
         }
       } catch (error) {
         console.warn("Failed to load static lyrics file:", item.lyricsPath, error);

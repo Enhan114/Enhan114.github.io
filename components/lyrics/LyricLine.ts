@@ -892,36 +892,35 @@ export class LyricLine implements ILyricLine {
       }
 
       // ---- Texture-based compositing path (fast) ----
-      // words is a subset of this.layout.words — must look up by
-      // the original index in the full layout, not the subset position.
       const tex = wordToTex.get(this.layout!.words.indexOf(w));
       if (tex) {
         const texx = w.x - texPadX;
         const texy = w.y - lift - texPadTop;
 
-        // Draw gradient rectangle onto a scratch canvas
+        // Work in logical pixels on liftCtx, matching the DPR-scaling
+        // convention used everywhere else (fallback path, drawFullLine,
+        // and the main ctx).  Without this scale the texture-composited
+        // active line renders at 1/DPR resolution and appears visually
+        // smaller / blurrier than its neighbours — glaring on mobile where
+        // DPR≥2.
         const gradW = Math.ceil(tex.width);
         const gradH = Math.ceil(tex.height);
-        const tmpW = Math.ceil(gradW * this.pixelRatio);
-        const tmpH = Math.ceil(gradH * this.pixelRatio);
+        const physW = Math.ceil(gradW * this.pixelRatio);
+        const physH = Math.ceil(gradH * this.pixelRatio);
 
-        if (
-          this.liftCanvas.width < tmpW ||
-          this.liftCanvas.height < tmpH
-        ) {
-          this.liftCanvas.width = Math.max(this.liftCanvas.width, tmpW);
-          this.liftCanvas.height = Math.max(this.liftCanvas.height, tmpH);
+        if (this.liftCanvas.width < physW || this.liftCanvas.height < physH) {
+          this.liftCanvas.width = Math.max(this.liftCanvas.width, physW);
+          this.liftCanvas.height = Math.max(this.liftCanvas.height, physH);
         }
 
-        // Clear scratch
-        this.liftCtx.clearRect(0, 0, tmpW, tmpH);
+        this.liftCtx.clearRect(0, 0, physW, physH);
+        this.liftCtx.save();
+        this.liftCtx.scale(this.pixelRatio, this.pixelRatio);
 
         if (elapsed >= duration || elapsed < 0) {
-          // Solid colour — draw directly
           this.liftCtx.fillStyle = leftColor;
           this.liftCtx.fillRect(0, 0, gradW, gradH);
         } else {
-          // Gradient fill
           const grad = this.liftCtx.createLinearGradient(0, 0, gradW, 0);
           const fadeWidth = Math.max(0.08, Math.min(0.25, duration * 0.1));
           grad.addColorStop(Math.max(0, p - fadeWidth), leftColor);
@@ -930,32 +929,24 @@ export class LyricLine implements ILyricLine {
           this.liftCtx.fillRect(0, 0, gradW, gradH);
         }
 
-        // Clip gradient to word shape using cached texture
+        // Clip gradient to word shape using cached texture.
+        // tex.canvas is already at physical resolution; draw it at logical
+        // size so the active pixelRatio scaling fills it correctly.
         this.liftCtx.globalCompositeOperation = "destination-in";
         this.liftCtx.drawImage(
           tex.canvas,
-          0,
-          0,
-          tex.width * this.pixelRatio,
-          tex.height * this.pixelRatio,
-          0,
-          0,
-          gradW,
-          gradH,
+          0, 0, tex.width * this.pixelRatio, tex.height * this.pixelRatio,
+          0, 0, gradW, gradH,
         );
         this.liftCtx.globalCompositeOperation = "source-over";
 
-        // Blit result onto main canvas
+        this.liftCtx.restore();
+
+        // Blit from physical source → logical destination
         this.ctx.drawImage(
           this.liftCanvas,
-          0,
-          0,
-          tmpW,
-          tmpH,
-          texx,
-          texy,
-          gradW,
-          gradH,
+          0, 0, physW, physH,
+          texx, texy, gradW, gradH,
         );
         continue;
       }
