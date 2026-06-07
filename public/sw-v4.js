@@ -13,21 +13,54 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
   // ── AMLL proxy: /api/amll/ncm/:id → amll-ttml-db.stevexmh.net/ncm/:id ──
-  // This server returns both TTML and LRC; we just forward whatever it gives.
   const amllMatch = url.pathname.match(/^\/api\/amll\/ncm\/(\d+)$/);
   if (amllMatch) {
     const amllUrl = `https://amll-ttml-db.stevexmh.net/ncm/${amllMatch[1]}`;
     event.respondWith(
-      fetch(amllUrl).then((res) => {
-        return new Response(res.body, {
+      fetch(amllUrl).then((res) =>
+        new Response(res.body, {
           status: res.status,
           statusText: res.statusText,
           headers: {
             "Content-Type": res.headers.get("Content-Type") || "application/octet-stream",
             "Access-Control-Allow-Origin": "*",
           },
-        });
-      }).catch(() => new Response(null, { status: 502 }))
+        })
+      ).catch(() => new Response(null, { status: 502 }))
+    );
+    return;
+  }
+
+  // ── NetEase search via corsproxy.io ──
+  if (url.pathname === "/api/netease/search") {
+    const q = url.searchParams.get("q") || "";
+    const limit = url.searchParams.get("limit") || "10";
+    const offset = url.searchParams.get("offset") || "0";
+    const target = `https://music.163.com/api/search/pc?s=${encodeURIComponent(q)}&type=1&limit=${limit}&offset=${offset}`;
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(target)}`;
+    event.respondWith(
+      fetch(proxyUrl).then((res) =>
+        new Response(res.body, {
+          status: res.status,
+          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+        })
+      ).catch(() => new Response(null, { status: 502 }))
+    );
+    return;
+  }
+
+  // ── NetEase lyrics via corsproxy.io ──
+  if (url.pathname === "/api/netease/lyric") {
+    const id = url.searchParams.get("id") || "";
+    const target = `https://music.163.com/api/song/lyric?id=${encodeURIComponent(id)}`;
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(target)}`;
+    event.respondWith(
+      fetch(proxyUrl).then((res) =>
+        new Response(res.body, {
+          status: res.status,
+          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+        })
+      ).catch(() => new Response(null, { status: 502 }))
     );
     return;
   }

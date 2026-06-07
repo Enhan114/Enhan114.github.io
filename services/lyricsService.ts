@@ -454,9 +454,17 @@ export const searchNetEase = async (
   keyword: string,
   options: SearchOptions = {},
 ): Promise<NeteaseTrackInfo[]> => {
-  // NetEase is CORS-blocked. LRCLIB handles automatic search.
-  // For TTML, add "neteaseId" to music-manifest.json.
-  return [];
+  const url = `/api/netease/search?q=${encodeURIComponent(keyword)}&limit=${limit}&offset=${offset}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json() as NeteaseSearchResponse;
+    const songs = data?.result?.songs ?? [];
+    return songs.map(mapNeteaseSongToTrack);
+  } catch (err) {
+    console.warn("[NetEase] search failed:", (err as Error).message);
+    return [];
+  }
 };
 
 export const fetchNeteasePlaylist = async (
@@ -588,20 +596,39 @@ export const fetchLyricsById = async (
   songId: string,
 ): Promise<MatchedLyricsResult | null> => {
   try {
-    // AMLL TTML DB (via SW proxy) — returns TTML or LRC
-    const amllContent = await fetchAmllLyrics(songId);
+    // 1. AMLL (via SW proxy) — TTML or LRC
+    // 2. NetEase (via SW proxy → corsproxy.io) — LRC + YRC + translation
+    const [amllContent, lyricDataResult] = await Promise.all([
+      fetchAmllLyrics(songId),
+      (async () => {
+        const url = `/api/netease/lyric?id=${encodeURIComponent(songId)}`;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return null;
+          return await res.json();
+        } catch { return null; }
+      })(),
+    ]);
 
-    if (!amllContent) return null;
+    const lyricData = lyricDataResult as any;
+    const rawYrc: string | undefined = lyricData?.yrc?.lyric;
+    const rawTLrc: string | undefined = lyricData?.tlyric?.lyric;
+    const rawYtl: string | undefined = lyricData?.ytlrc?.lyric;
 
-    // Determine TTML vs LRC from AMLL response
-    const isTtml = amllContent.trim().startsWith("<?xml");
+    // AMLL response: TTML or LRC
+    const isTtml = amllContent?.trim().startsWith("<?xml") ?? false;
     const ttmlContent = isTtml ? amllContent : undefined;
-    const lrcContent = !isTtml ? amllContent : undefined;
+    const amllLrc = !isTtml ? amllContent : undefined;
 
-    if (!ttmlContent && !lrcContent) return null;
+    // LRC: AMLL first, then NetEase fallback
+    const rawLrc: string | undefined = amllLrc ?? lyricData?.lrc?.lyric;
+
+    if (!ttmlContent && !rawLrc && !rawYrc) return null;
 
     return {
-      lrc: lrcContent ?? undefined,
+      lrc: rawLrc ?? undefined,
+      yrc: rawYrc ?? undefined,
+      tLrc: rawTLrc?.trim() || rawYtl,
       ttml: ttmlContent ?? undefined,
       metadata: [],
     };
