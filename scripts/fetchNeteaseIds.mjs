@@ -52,7 +52,21 @@ const main = async () => {
     }
     ids++;
 
-    // 2. AMLL TTML first
+    // 2. API YRC first (user's preference)
+    const data = await fetchJson(`${API}/lyric/new?id=${entry.neteaseId}`);
+    const yrcContent = data?.yrc?.lyric;
+    if (yrcContent && yrcContent.length > 30) {
+      writeFileSync(join(musicDir, yrcFile), yrcContent, "utf-8");
+      entry.yrcPath = `music/${yrcFile}`;
+      delete entry.lyricsPath;
+      delete entry.ttmlPath;
+      yrc++;
+      console.log(`  📝 YRC`);
+      await sleep(400);
+      continue;
+    }
+
+    // 3. AMLL TTML fallback
     const hasTtmlOnDisk = existsSync(join(musicDir, ttmlFile));
     let gotTtml = hasTtmlOnDisk;
     if (!hasTtmlOnDisk) {
@@ -64,28 +78,13 @@ const main = async () => {
     }
     if (gotTtml) {
       entry.ttmlPath = `music/${ttmlFile}`;
-      delete entry.lyricsPath; // no LRC needed
-      // Remove stale yrc/lrc files
+      delete entry.lyricsPath;
       try { unlinkSync(join(musicDir, yrcFile)); } catch {}
       try { unlinkSync(join(musicDir, `${fn}.lrc`)); } catch {}
       ttml++;
-      console.log(`  🎯 TTML`);
-      await sleep(400);
-      continue;
-    }
-
-    // 3. API YRC (逐字歌词) fallback
-    const data = await fetchJson(`${API}/lyric/new?id=${entry.neteaseId}`);
-    const yrcContent = data?.yrc?.lyric;
-    if (yrcContent && yrcContent.length > 30) {
-      writeFileSync(join(musicDir, yrcFile), yrcContent, "utf-8");
-      entry.yrcPath = `music/${yrcFile}`;
-      delete entry.lyricsPath;
-      delete entry.ttmlPath;
-      yrc++;
-      console.log(`  📝 YRC`);
+      console.log(`  🎯 TTML (AMLL fallback)`);
     } else {
-      console.log(`  ⚠️  No YRC`);
+      console.log(`  ⚠️  No lyrics`);
     }
 
     await sleep(400);
