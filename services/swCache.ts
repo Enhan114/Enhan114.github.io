@@ -15,7 +15,7 @@ export const registerSW = () => {
   (navigator as any)[REGISTERED] = true;
 
   navigator.serviceWorker
-    .register("/sw.js")
+    .register("/sw-v2.js")
     .then((reg) => {
       console.log("[SW] registered, scope:", reg.scope);
       ready = true;
