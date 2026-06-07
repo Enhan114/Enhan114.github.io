@@ -1,11 +1,8 @@
 import { fetchViaProxy } from "./utils";
 import { isMetadataLine } from "./lyrics/types";
 
-const LYRIC_API_BASE = "https://zm.wwoyun.cn";
 const METING_API = "https://api.qijieya.cn/meting/";
-const NETEASE_SEARCH_API = "https://zm.wwoyun.cn/cloudsearch";
-const NETEASE_API_BASE = "http://music.163.com/api";
-const NETEASECLOUD_API_BASE = "https://zm.wwoyun.cn";
+const NETEASE_API_BASE = "https://music.163.com/api";
 const TTML_DB_BASE = "https://amll-ttml-db.stevexmh.net";
 const LRCLIB_BASE = "https://lrclib.net/api";
 
@@ -460,24 +457,17 @@ export const searchNetEase = async (
   const { limit = 20, offset = 0 } = options;
   const searchPath = `/cloudsearch?keywords=${encodeURIComponent(keyword)}&limit=${limit}&offset=${offset}`;
 
-  // Multiple search strategies: [label, url]
-  const strategies: Array<[string, string]> = [
-    ["zm.wwoyun.cn", `https://zm.wwoyun.cn${searchPath}`],
-    ["netease-direct", `https://music.163.com/api/search/pc?s=${encodeURIComponent(keyword)}&type=1&limit=${limit}&offset=${offset}`],
-  ];
-
-  for (const [label, baseUrl] of strategies) {
-    try {
-      const data = await fetchViaProxy(baseUrl);
-      const parsed = data as NeteaseSearchResponse;
-      const songs = parsed?.result?.songs ?? (Array.isArray(parsed?.result?.songs) ? parsed.result.songs : []);
-      if (songs.length > 0) {
-        if (label !== "zm.wwoyun.cn") console.log(`[NetEase] search via ${label}: ${songs.length} results`);
-        return songs.map(mapNeteaseSongToTrack);
-      }
-    } catch (err) {
-      console.warn(`[NetEase] search via ${label} failed:`, (err as Error).message);
+  // Search music.163.com directly (goes through fetchViaProxy which tries direct → allorigins)
+  const url = `https://music.163.com/api/search/pc?s=${encodeURIComponent(keyword)}&type=1&limit=${limit}&offset=${offset}`;
+  try {
+    const data = await fetchViaProxy(url);
+    const parsed = data as NeteaseSearchResponse;
+    const songs = parsed?.result?.songs ?? [];
+    if (songs.length > 0) {
+      return songs.map(mapNeteaseSongToTrack);
     }
+  } catch (err) {
+    console.warn("[NetEase] search failed:", (err as Error).message);
   }
 
   return [];
@@ -495,7 +485,7 @@ export const fetchNeteasePlaylist = async (
     let shouldContinue = true;
 
     while (shouldContinue) {
-      const url = `${NETEASECLOUD_API_BASE}/playlist/track/all?id=${playlistId}&limit=${limit}&offset=${offset}`;
+      const url = `${NETEASE_API_BASE}/playlist/track/all?id=${playlistId}&limit=${limit}&offset=${offset}`;
       const data = (await fetchViaProxy(url)) as NeteasePlaylistResponse;
       const songs = data.songs ?? [];
       if (songs.length === 0) {
@@ -525,7 +515,7 @@ export const fetchNeteaseSong = async (
   songId: string,
 ): Promise<NeteaseTrackInfo | null> => {
   try {
-    const url = `${NETEASECLOUD_API_BASE}/song/detail?ids=${songId}`;
+    const url = `${NETEASE_API_BASE}/song/detail?ids=${songId}`;
     const data = (await fetchViaProxy(url)) as NeteaseSongDetailResponse;
     const track = data.songs?.[0];
     if (data.code === 200 && track) {
@@ -615,7 +605,7 @@ export const fetchLyricsById = async (
     const [amllContent, lyricDataResult] = await Promise.all([
       fetchAmllLyrics(songId),
       (async () => {
-        const lyricUrl = `${NETEASECLOUD_API_BASE}/lyric/new?id=${songId}`;
+        const lyricUrl = `${NETEASE_API_BASE}/lyric/new?id=${songId}`;
         try {
           return await fetchViaProxy(lyricUrl);
         } catch {
