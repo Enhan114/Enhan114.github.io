@@ -147,7 +147,18 @@ export const preloadAll = async (
         onProgress({ done, total: totalSteps, current: song.title, currentType: "lyrics" });
         onSongProgress(song.id, "lyrics", "loading");
         try {
-          const matchResult = await searchAndMatchLyrics(song.title, song.artist);
+          const { fetchLyricsById, searchAndMatchLyrics } = await import("../services/lyrics");
+          let matchResult: import("../services/lyricsService").MatchedLyricsResult | null = null;
+
+          // If song already has neteaseId, fetch directly — no search needed
+          if (song.neteaseId) {
+            matchResult = await fetchLyricsById(song.neteaseId);
+          }
+          // Fall back to full search
+          if (!matchResult) {
+            matchResult = await searchAndMatchLyrics(song.title, song.artist);
+          }
+
           if (matchResult) {
             const { parseLyrics } = await import("../services/lyrics");
             const lines = matchResult.ttml ? parseLyrics(matchResult.ttml) : parseLyrics(matchResult.lrc ?? "", matchResult.tLrc, { yrcContent: matchResult.yrc });

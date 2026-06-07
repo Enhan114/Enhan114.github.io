@@ -8,6 +8,8 @@ interface ManifestEntry {
   filePath: string;
   lyricsPath?: string;
   coverPath?: string;
+  /** NetEase song ID — if provided, skips search and goes directly to TTML/LRC */
+  neteaseId?: string;
 }
 
 const baseUrl = import.meta.env.BASE_URL ?? "/";
@@ -48,9 +50,8 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       }
     }
 
-    // Always use cloud matching (NetEase → TTML / YRC).  Cloud data has
-    // per-word timing (逐字时间) that local LRC files lack.  Lyrics are
-    // cached to IndexedDB after first match so subsequent plays are instant.
+    // If neteaseId is provided in manifest, skip search and go directly to TTML/LRC
+    const hasNeteaseId = item.neteaseId && item.neteaseId.trim().length > 0;
     songs.push({
       id: item.id,
       title: item.title,
@@ -61,6 +62,8 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       coverUrl,
       lyrics: [],
       needsLyricsMatch: true,
+      isNetease: hasNeteaseId || undefined,
+      neteaseId: hasNeteaseId ? item.neteaseId : undefined,
       colors: colors.length > 0 ? colors : [],
     });
   }
