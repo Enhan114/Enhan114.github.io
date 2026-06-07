@@ -7,6 +7,7 @@ const NETEASE_SEARCH_API = "https://zm.wwoyun.cn/cloudsearch";
 const NETEASE_API_BASE = "http://music.163.com/api";
 const NETEASECLOUD_API_BASE = "https://zm.wwoyun.cn";
 const TTML_DB_BASE = "https://amll-ttml-db.stevexmh.net";
+const LRCLIB_BASE = "https://lrclib.net/api";
 
 const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)$/;
 
@@ -346,7 +347,7 @@ export const getNeteaseAudioUrl = (id: string) => {
 const fetchTtmlByNeteaseId = async (id: string): Promise<string | null> => {
   const url = `${TTML_DB_BASE}/ncm/${encodeURIComponent(id)}`;
 
-  try {
+  const tryFetch = async (url: string): Promise<string | null> => {
     const res = await fetch(url);
     if (!res.ok) {
       if (res.status !== 404) {
@@ -354,12 +355,105 @@ const fetchTtmlByNeteaseId = async (id: string): Promise<string | null> => {
       }
       return null;
     }
-
     const text = await res.text();
     const trimmed = text.trim();
     return trimmed.length > 0 ? trimmed : null;
+  };
+
+  // 1. Try direct
+  try {
+    const result = await tryFetch(url);
+    if (result) return result;
+  } catch {
+    // CORS error — fall through to proxy
+  }
+
+  // 2. Try via CORS proxy
+  try {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    return await tryFetch(proxyUrl);
   } catch (err) {
     console.error("TTML lyrics request error", err);
+    return null;
+  }
+};
+
+// ── LRCLIB: open-source lyrics database ──
+interface LrclibTrack {
+  id: number;
+  name: string;
+  artistName: string;
+  albumName?: string;
+  duration?: number;
+  plainLyrics?: string;
+  syncedLyrics?: string;
+}
+
+const searchLrclib = async (title: string, artist: string): Promise<LrclibTrack[]> => {
+  const q = encodeURIComponent(`${artist} ${title}`.trim());
+  try {
+    const res = await fetch(`${LRCLIB_BASE}/search?q=${q}`);
+    if (!res.ok) return [];
+    return (await res.json()) as LrclibTrack[];
+  } catch {
+    return [];
+  }
+};
+
+const fetchLrclibById = async (id: number): Promise<LrclibTrack | null> => {
+  try {
+    const res = await fetch(`${LRCLIB_BASE}/get/${id}`);
+    if (!res.ok) return null;
+    return (await res.json()) as LrclibTrack;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Try LRCLIB as a third lyrics source.
+ * Returns a MatchedLyricsResult-compatible object, or null.
+ */
+const tryLrclib = async (
+  title: string,
+  artist: string,
+  durationSec?: number,
+): Promise<MatchedLyricsResult | null> => {
+  try {
+    const tracks = await searchLrclib(title, artist);
+    if (tracks.length === 0) return null;
+
+    // Pick best match: prefer duration-matched, then first result
+    let best = tracks[0];
+    if (durationSec && durationSec > 0) {
+      let bestDiff = Infinity;
+      for (const t of tracks) {
+        if (!t.duration || t.duration <= 0) continue;
+        const diff = Math.abs(t.duration - durationSec);
+        if (diff < bestDiff) { bestDiff = diff; best = t; }
+      }
+      if (!Number.isFinite(bestDiff) || bestDiff > 15) best = tracks[0];
+    }
+
+    // Need full lyrics — fetch by ID
+    const full = await fetchLrclibById(best.id);
+    if (!full || (!full.syncedLyrics && !full.plainLyrics)) return null;
+
+    console.log(`[LRCLIB] lyrics found: ${full.name} by ${full.artistName}`);
+
+    const lrcContent = full.syncedLyrics ?? full.plainLyrics ?? "";
+    return {
+      lrc: lrcContent,
+      yrc: undefined,
+      tLrc: undefined,
+      ttml: undefined,
+      metadata: [],
+      matchedArtist: full.artistName,
+      matchedTitle: full.name,
+      matchedAlbum: full.albumName,
+    };
+  } catch (e) {
+    console.warn("[LRCLIB] search/fetch failed:", e);
     return null;
   }
 };
@@ -499,12 +593,18 @@ export const searchAndMatchLyrics = async (
       lyricsResult.matchedTitle = bestSong.title;
       lyricsResult.matchedAlbum = bestSong.album;
       lyricsResult.matchedNeteaseId = bestSong.id;
+      return lyricsResult;
     }
-    return lyricsResult;
   } catch (error) {
     console.error("Cloud lyrics match failed:", error);
-    return null;
   }
+
+  // ── Fallback: try LRCLIB if NetEase/TTML didn't work ──
+  console.log("[Lyrics] Trying LRCLIB fallback...");
+  const lrclibResult = await tryLrclib(title, artist, durationSec);
+  if (lrclibResult) return lrclibResult;
+
+  return null;
 };
 
 export const fetchLyricsById = async (
