@@ -31,40 +31,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // ── NetEase search via corsproxy.io ──
-  if (url.pathname === "/api/netease/search") {
-    const q = url.searchParams.get("q") || "";
-    const limit = url.searchParams.get("limit") || "10";
-    const offset = url.searchParams.get("offset") || "0";
-    const target = `https://music.163.com/api/search/pc?s=${encodeURIComponent(q)}&type=1&limit=${limit}&offset=${offset}`;
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(target)}`;
-    event.respondWith(
-      fetch(proxyUrl).then((res) =>
-        new Response(res.body, {
-          status: res.status,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
-        })
-      ).catch(() => new Response(null, { status: 502 }))
-    );
-    return;
-  }
-
-  // ── NetEase lyrics via corsproxy.io ──
-  if (url.pathname === "/api/netease/lyric") {
-    const id = url.searchParams.get("id") || "";
-    const target = `https://music.163.com/api/song/lyric?id=${encodeURIComponent(id)}`;
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(target)}`;
-    event.respondWith(
-      fetch(proxyUrl).then((res) =>
-        new Response(res.body, {
-          status: res.status,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
-        })
-      ).catch(() => new Response(null, { status: 502 }))
-    );
-    return;
-  }
-
   // ── Audio cache ──
   if (!isAudio(url)) return;
 
