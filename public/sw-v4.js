@@ -12,19 +12,39 @@ const isAudio = (url) => /\.(flac|mp3|ogg|wav|m4a|aac)(\?|$)/i.test(url.pathname
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // ── NetEase search proxy: /api/netease/search?q=... → music.163.com/api/search/pc ──
+  // ── NetEase search proxy: routes through CORS proxies to reach music.163.com ──
   if (url.pathname === "/api/netease/search") {
     const q = url.searchParams.get("q") || "";
     const limit = url.searchParams.get("limit") || "10";
     const offset = url.searchParams.get("offset") || "0";
     const target = `https://music.163.com/api/search/pc?s=${encodeURIComponent(q)}&type=1&limit=${limit}&offset=${offset}`;
+
+    const tryFetch = async (targetUrl) => {
+      const strategies = [
+        // corsproxy.io — most reliable free CORS proxy
+        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+        // codetabs proxy — another free option
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+      ];
+      for (const proxyUrl of strategies) {
+        try {
+          const res = await fetch(proxyUrl);
+          if (res.ok) return res;
+        } catch {}
+      }
+      return null;
+    };
+
     event.respondWith(
-      fetch(target).then((res) => {
-        return new Response(res.body, {
-          status: res.status,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
-        });
-      }).catch(() => new Response(null, { status: 502 }))
+      tryFetch(target).then((res) => {
+        if (res) {
+          return new Response(res.body, {
+            status: res.status,
+            headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        return new Response(null, { status: 502 });
+      })
     );
     return;
   }
