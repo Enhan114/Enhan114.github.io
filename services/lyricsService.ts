@@ -570,10 +570,17 @@ export const fetchLyricsById = async (
     const res = await fetch(url);
     if (!res.ok) return null;
     const data = await res.json();
+    // YRC = word-level timing (逐字歌词), LRC = line-level, TLRC = translation
+    const rawYrc: string | undefined = data?.yrc?.lyric;
     const rawLrc: string | undefined = data?.lrc?.lyric;
     const rawTLrc: string | undefined = data?.tlyric?.lyric;
-    if (!rawLrc && !rawTLrc) return null;
-    return { lrc: rawLrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
+    if (!rawYrc && !rawLrc) return null;
+    return {
+      lrc: rawLrc,
+      yrc: rawYrc,
+      tLrc: rawTLrc?.trim() || undefined,
+      metadata: [],
+    };
   } catch {
     return null;
   }
