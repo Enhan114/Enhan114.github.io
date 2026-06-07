@@ -50,27 +50,42 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       }
     }
 
-    // Load local LRC if available (downloaded at build time)
+    // Load local lyrics — prefer TTML (word-level timing) over LRC (line-level)
     let lyrics: import("../types").LyricLine[] = [];
     let needsLyricsMatch = true;
-    if (item.lyricsPath) {
+    const { parseLyrics, isTtmlFormat } = await import("./lyrics");
+
+    // Load TTML first if available (better word-level timing)
+    if (item.ttmlPath) {
       try {
-        const lrcUrl = resolveAssetUrl(item.lyricsPath);
-        const lrcRes = await fetch(lrcUrl);
-        if (lrcRes.ok) {
-          const lrcText = await lrcRes.text();
-          if (lrcText.trim()) {
-            const { parseLyrics } = await import("./lyrics");
-            lyrics = parseLyrics(lrcText);
+        const url = resolveAssetUrl(item.ttmlPath);
+        const res = await fetch(url);
+        if (res.ok) {
+          const text = await res.text();
+          if (text.trim() && isTtmlFormat(text)) {
+            lyrics = parseLyrics(text);
             needsLyricsMatch = false;
-            console.log(`[Static] loaded LRC: ${item.title}`);
+            console.log(`[Static] loaded TTML: ${item.title} (${lyrics.length} lines)`);
           }
         }
       } catch { /* unavailable */ }
     }
 
-    // Resolve TTML path if present (word-level timing, loaded on demand)
-    const ttmlUrl = item.ttmlPath ? resolveAssetUrl(item.ttmlPath) : undefined;
+    // Fall back to LRC
+    if (lyrics.length === 0 && item.lyricsPath) {
+      try {
+        const url = resolveAssetUrl(item.lyricsPath);
+        const res = await fetch(url);
+        if (res.ok) {
+          const text = await res.text();
+          if (text.trim()) {
+            lyrics = parseLyrics(text);
+            needsLyricsMatch = false;
+            console.log(`[Static] loaded LRC: ${item.title} (${lyrics.length} lines)`);
+          }
+        }
+      } catch { /* unavailable */ }
+    }
 
     const hasNeteaseId = item.neteaseId && item.neteaseId.trim().length > 0;
     songs.push({
