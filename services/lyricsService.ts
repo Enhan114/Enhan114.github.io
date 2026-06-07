@@ -589,19 +589,7 @@ export const searchAndMatchLyrics = async (
 export const fetchLyricsById = async (
   songId: string,
 ): Promise<MatchedLyricsResult | null> => {
-  try {
-    // AMLL via SW proxy — returns TTML or LRC
-    const amllContent = await fetchAmllLyrics(songId);
-    if (!amllContent) return null;
-
-    const isTtml = amllContent.trim().startsWith("<?xml");
-    return {
-      lrc: isTtml ? undefined : amllContent,
-      ttml: isTtml ? amllContent : undefined,
-      metadata: [],
-    };
-  } catch (e) {
-    console.error("Lyric fetch pipeline error", e);
-    return null;
-  }
+  // Local LRC files downloaded at build time (via Meting API) are the
+  // primary lyrics source — no cloud fetch needed. AMLL is CORS-blocked.
+  return null;
 };
