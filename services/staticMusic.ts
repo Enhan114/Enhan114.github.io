@@ -7,8 +7,8 @@ interface ManifestEntry {
   artist: string;
   filePath: string;
   lyricsPath?: string;
+  ttmlPath?: string;
   coverPath?: string;
-  /** NetEase song ID — if provided, skips search and goes directly to TTML/LRC */
   neteaseId?: string;
 }
 
@@ -63,11 +63,14 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
             const { parseLyrics } = await import("./lyrics");
             lyrics = parseLyrics(lrcText);
             needsLyricsMatch = false;
-            console.log(`[Static] loaded local LRC: ${item.title}`);
+            console.log(`[Static] loaded LRC: ${item.title}`);
           }
         }
-      } catch { /* local LRC unavailable — cloud match will run */ }
+      } catch { /* unavailable */ }
     }
+
+    // Resolve TTML path if present (word-level timing, loaded on demand)
+    const ttmlUrl = item.ttmlPath ? resolveAssetUrl(item.ttmlPath) : undefined;
 
     const hasNeteaseId = item.neteaseId && item.neteaseId.trim().length > 0;
     songs.push({

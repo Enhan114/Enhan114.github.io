@@ -519,70 +519,17 @@ export const fetchNeteaseSong = async (
 };
 
 // Keeps the old search for lyric matching fallbacks
+// Lyrics are pre-downloaded at build time (via fetchNeteaseIds.mjs) and
+// stored as local .lrc/.ttml files. Cloud matching is only used as a
+// last resort for songs added without running the build script.
 export const searchAndMatchLyrics = async (
-  title: string,
-  artist: string,
-  durationSec?: number,
+  _title: string,
+  _artist: string,
+  _durationSec?: number,
 ): Promise<MatchedLyricsResult | null> => {
-  try {
-    const songs = await searchNetEase(`${title} ${artist}`, { limit: 10 });
-
-    if (songs.length === 0) {
-      console.warn("No songs found on Cloud, falling back to LRCLIB...");
-      // Don't return null — fall through to LRCLIB below
-    } else {
-
-    // If we know the local file's duration, pick the NetEase result whose
-    // duration is closest.  This avoids matching a live/remix/alternate
-    // recording whose TTML timing would be out of sync with the local audio.
-    let bestSong = songs[0];
-    if (durationSec && durationSec > 0) {
-      let bestDiff = Infinity;
-      for (const s of songs) {
-        // NetEase dt is in milliseconds
-        const neteaseSec = (s.duration ?? 0) / 1000;
-        if (neteaseSec <= 0) continue;
-        const diff = Math.abs(neteaseSec - durationSec);
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          bestSong = s;
-        }
-      }
-      if (Number.isFinite(bestDiff) && bestDiff < 15) {
-        // Only use duration-matched result if it's within 15 seconds
-        console.log(
-          `Duration-matched: ${bestSong.title} (${((bestSong.duration ?? 0) / 1000).toFixed(0)}s ≈ ${durationSec.toFixed(0)}s, diff ${bestDiff.toFixed(1)}s)`,
-        );
-      } else {
-        // No close duration match — fall back to first search result
-        console.log(
-          `Duration match too far (best diff ${Number.isFinite(bestDiff) ? bestDiff.toFixed(1) : "∞"}s), falling back to first result`,
-        );
-        bestSong = songs[0];
-      }
-    }
-
-    const songId = bestSong.id;
-    console.log(`Matched Song ID: ${songId} — ${bestSong.title}`);
-
-    const lyricsResult = await fetchLyricsById(songId);
-    if (lyricsResult) {
-      lyricsResult.matchedArtist = bestSong.artist;
-      lyricsResult.matchedTitle = bestSong.title;
-      lyricsResult.matchedAlbum = bestSong.album;
-      lyricsResult.matchedNeteaseId = bestSong.id;
-      return lyricsResult;
-    }
-    } // end else (songs.length > 0)
-  } catch (error) {
-    console.error("Cloud lyrics match failed:", error);
-  }
-
-  // ── Fallback: try LRCLIB if NetEase/TTML didn't work ──
-  console.log("[Lyrics] Trying LRCLIB fallback...");
-  const lrclibResult = await tryLrclib(title, artist, durationSec);
-  if (lrclibResult) return lrclibResult;
-
+  // Cloud matching is unavailable from the browser (CORS blocks
+  // music.163.com and amll-ttml-db.stevexmh.net). Lyrics come from
+  // local files downloaded at build time.
   return null;
 };
 
