@@ -12,6 +12,7 @@ import PreloadDialog from "./components/PreloadDialog";
 import TopBar from "./components/TopBar";
 import SearchModal from "./components/SearchModal";
 import { ShortcutBinding, loadBindings } from "./services/shortcutSettings";
+import { getCacheBustedUrl } from "./services/cacheVersion";
 import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
 import { useI18n } from "./hooks/useI18n";
@@ -381,7 +382,7 @@ const App: React.FC = () => {
 
       <audio
         ref={audioRef}
-        src={resolvedAudioSrc ?? currentSong?.fileUrl}
+        src={resolvedAudioSrc ?? getCacheBustedUrl(currentSong?.fileUrl ?? "")}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleAudioEnded}

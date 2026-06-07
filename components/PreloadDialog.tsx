@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { Song } from "../types";
 import { deleteAudioBlob } from "../services/audioCacheDB";
 import { audioResourceCache } from "../services/cache";
+import { bumpCacheVersion } from "../services/cacheVersion";
 import {
   isPreloadDone, markPreloadDone, getPreloadableSongs, preloadAll,
   type PreloadProgress,
@@ -225,6 +226,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
       deleteAudioBlob(song.fileUrl).catch((e) => {
         console.warn(`[CacheDB] delete failed for ${song.title}:`, e);
       });
+      bumpCacheVersion(); // bust browser HTTP cache too
     }
   };
 
@@ -244,6 +246,9 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
       deleteAudioBlob(song.fileUrl).catch((e) => {
         console.warn(`[CacheDB] delete failed for ${song.title}:`, e);
       });
+    }
+    if (toDelete.length > 0) {
+      bumpCacheVersion(); // bust browser HTTP cache for all deleted songs
     }
   };
 
