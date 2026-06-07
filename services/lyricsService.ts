@@ -550,9 +550,9 @@ export const searchAndMatchLyrics = async (
     const songs = await searchNetEase(`${title} ${artist}`, { limit: 10 });
 
     if (songs.length === 0) {
-      console.warn("No songs found on Cloud");
-      return null;
-    }
+      console.warn("No songs found on Cloud, falling back to LRCLIB...");
+      // Don't return null — fall through to LRCLIB below
+    } else {
 
     // If we know the local file's duration, pick the NetEase result whose
     // duration is closest.  This avoids matching a live/remix/alternate
@@ -595,6 +595,7 @@ export const searchAndMatchLyrics = async (
       lyricsResult.matchedNeteaseId = bestSong.id;
       return lyricsResult;
     }
+    } // end else (songs.length > 0)
   } catch (error) {
     console.error("Cloud lyrics match failed:", error);
   }
