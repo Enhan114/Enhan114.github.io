@@ -50,7 +50,25 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       }
     }
 
-    // If neteaseId is provided in manifest, skip search and go directly to TTML/LRC
+    // Load local LRC if available (downloaded at build time)
+    let lyrics: import("../types").LyricLine[] = [];
+    let needsLyricsMatch = true;
+    if (item.lyricsPath) {
+      try {
+        const lrcUrl = resolveAssetUrl(item.lyricsPath);
+        const lrcRes = await fetch(lrcUrl);
+        if (lrcRes.ok) {
+          const lrcText = await lrcRes.text();
+          if (lrcText.trim()) {
+            const { parseLyrics } = await import("./lyrics");
+            lyrics = parseLyrics(lrcText);
+            needsLyricsMatch = false;
+            console.log(`[Static] loaded local LRC: ${item.title}`);
+          }
+        }
+      } catch { /* local LRC unavailable — cloud match will run */ }
+    }
+
     const hasNeteaseId = item.neteaseId && item.neteaseId.trim().length > 0;
     songs.push({
       id: item.id,
@@ -60,8 +78,8 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       origin: fileUrl,
       source: "remote",
       coverUrl,
-      lyrics: [],
-      needsLyricsMatch: true,
+      lyrics,
+      needsLyricsMatch,
       isNetease: hasNeteaseId || undefined,
       neteaseId: hasNeteaseId ? item.neteaseId : undefined,
       colors: colors.length > 0 ? colors : [],
