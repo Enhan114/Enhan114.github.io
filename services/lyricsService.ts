@@ -344,15 +344,17 @@ export const getNeteaseAudioUrl = (id: string) => {
   return `${METING_API}?type=url&id=${id}`;
 };
 
+/**
+ * Fetch TTML lyrics through multiple CORS proxy fallbacks.
+ * TTML is the highest-quality format (word-level timing).
+ */
 const fetchTtmlByNeteaseId = async (id: string): Promise<string | null> => {
-  const url = `${TTML_DB_BASE}/ncm/${encodeURIComponent(id)}`;
+  const ttmlUrl = `${TTML_DB_BASE}/ncm/${encodeURIComponent(id)}`;
 
   const tryFetch = async (url: string): Promise<string | null> => {
     const res = await fetch(url);
     if (!res.ok) {
-      if (res.status !== 404) {
-        console.warn("TTML lyrics fetch failed", res.status, id);
-      }
+      if (res.status !== 404) console.warn("TTML fetch failed", res.status, id);
       return null;
     }
     const text = await res.text();
@@ -360,22 +362,28 @@ const fetchTtmlByNeteaseId = async (id: string): Promise<string | null> => {
     return trimmed.length > 0 ? trimmed : null;
   };
 
-  // 1. Try direct
-  try {
-    const result = await tryFetch(url);
-    if (result) return result;
-  } catch {
-    // CORS error — fall through to proxy
+  // List of fetch strategies: [label, url-factory]
+  const strategies: Array<[string, string]> = [
+    ["direct", ttmlUrl],
+    ["allorigins", `https://api.allorigins.win/raw?url=${encodeURIComponent(ttmlUrl)}`],
+    ["corsproxy", `https://corsproxy.io/?${encodeURIComponent(ttmlUrl)}`],
+    ["codetabs", `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(ttmlUrl)}`],
+  ];
+
+  for (const [label, url] of strategies) {
+    try {
+      const result = await tryFetch(url);
+      if (result) {
+        if (label !== "direct") console.log(`[TTML] fetched via ${label}: ${id}`);
+        return result;
+      }
+    } catch {
+      // try next strategy
+    }
   }
 
-  // 2. Try via CORS proxy
-  try {
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    return await tryFetch(proxyUrl);
-  } catch (err) {
-    console.error("TTML lyrics request error", err);
-    return null;
-  }
+  console.warn("[TTML] all strategies failed for", id);
+  return null;
 };
 
 // ── LRCLIB: open-source lyrics database ──
@@ -458,31 +466,38 @@ const tryLrclib = async (
   }
 };
 
-// Implements the search logic from the user provided code snippet
+/**
+ * Search NetEase via multiple proxy fallbacks.
+ * We need the NetEase song ID to fetch TTML and other lyrics.
+ */
 export const searchNetEase = async (
   keyword: string,
   options: SearchOptions = {},
 ): Promise<NeteaseTrackInfo[]> => {
   const { limit = 20, offset = 0 } = options;
-  const searchApiUrl = `${NETEASE_SEARCH_API}?keywords=${encodeURIComponent(
-    keyword,
-  )}&limit=${limit}&offset=${offset}`;
+  const searchPath = `/cloudsearch?keywords=${encodeURIComponent(keyword)}&limit=${limit}&offset=${offset}`;
 
-  try {
-    const parsedSearchApiResponse = (await fetchViaProxy(
-      searchApiUrl,
-    )) as NeteaseSearchResponse;
-    const songs = parsedSearchApiResponse.result?.songs ?? [];
+  // Multiple search strategies: [label, url]
+  const strategies: Array<[string, string]> = [
+    ["zm.wwoyun.cn", `https://zm.wwoyun.cn${searchPath}`],
+    ["netease-direct", `https://music.163.com/api/search/pc?s=${encodeURIComponent(keyword)}&type=1&limit=${limit}&offset=${offset}`],
+  ];
 
-    if (songs.length === 0) {
-      return [];
+  for (const [label, baseUrl] of strategies) {
+    try {
+      const data = await fetchViaProxy(baseUrl);
+      const parsed = data as NeteaseSearchResponse;
+      const songs = parsed?.result?.songs ?? (Array.isArray(parsed?.result?.songs) ? parsed.result.songs : []);
+      if (songs.length > 0) {
+        if (label !== "zm.wwoyun.cn") console.log(`[NetEase] search via ${label}: ${songs.length} results`);
+        return songs.map(mapNeteaseSongToTrack);
+      }
+    } catch (err) {
+      console.warn(`[NetEase] search via ${label} failed:`, (err as Error).message);
     }
-
-    return songs.map(mapNeteaseSongToTrack);
-  } catch (error) {
-    console.error("NetEase search error", error);
-    return [];
   }
+
+  return [];
 };
 
 export const fetchNeteasePlaylist = async (
