@@ -9,7 +9,12 @@
       "Bash(curl -s \"https://lrclib.net/api/search?q=test\")",
       "Bash(curl -s https://webmusic.cc.cd/sw.js)",
       "Bash(curl -s https://webmusic.cc.cd/sw-v2.js)",
-      "Bash(curl -sI https://webmusic.cc.cd/sw-v2.js)"
+      "Bash(curl -sI https://webmusic.cc.cd/sw-v2.js)",
+      "Bash(curl -sI https://webmusic.cc.cd/sw-v3.js)",
+      "Bash(curl -s https://webmusic.cc.cd/sw-v3.js)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

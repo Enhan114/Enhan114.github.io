@@ -1,8 +1,9 @@
 /**
- * Service Worker — intercepts audio + TTML requests.
- * - Audio: uses Cache Storage (deletable) instead of browser HTTP cache.
- * - TTML: proxies through same-origin to bypass CORS restrictions.
+ * Service Worker — intercepts audio + API proxy requests.
+ * All external API calls go through same-origin paths to bypass CORS.
  */
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(clients.claim()));
 
 const AUDIO_CACHE = "aura-audio-http";
 
