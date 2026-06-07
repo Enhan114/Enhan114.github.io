@@ -57,6 +57,7 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
   onBindingsChanged,
   onUnblock,
   onOpenCacheManager,
+  onOpenIdManager,
 }) => {
   const [bindings, setBindings] = useState<ShortcutBinding[]>(() => loadBindings());
   const [recording, setRecording] = useState<ShortcutAction | null>(null);
