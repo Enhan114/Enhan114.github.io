@@ -547,11 +547,11 @@ export const searchAndMatchLyrics = async (
       }
     }
 
-    console.log(`Matched Song ID: ${bestSong.id} — ${bestSong.name}`);
+    console.log(`Matched Song ID: ${bestSong.id} — ${bestSong.title}`);
     const lyrics = await fetchLyricsById(bestSong.id);
     if (lyrics) {
       lyrics.matchedArtist = bestSong.artist;
-      lyrics.matchedTitle = bestSong.name;
+      lyrics.matchedTitle = bestSong.title;
       lyrics.matchedAlbum = bestSong.album;
       lyrics.matchedNeteaseId = bestSong.id;
     }
