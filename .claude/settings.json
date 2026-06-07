@@ -7,7 +7,9 @@
       "Bash(git commit *)",
       "Bash(awk -F: '$1 <= 900 && $1 >= 840')",
       "Bash(curl -s \"https://lrclib.net/api/search?q=test\")",
-      "Bash(curl -s https://webmusic.cc.cd/sw.js)"
+      "Bash(curl -s https://webmusic.cc.cd/sw.js)",
+      "Bash(curl -s https://webmusic.cc.cd/sw-v2.js)",
+      "Bash(curl -sI https://webmusic.cc.cd/sw-v2.js)"
     ]
   }
 }

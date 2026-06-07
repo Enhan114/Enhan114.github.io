@@ -345,53 +345,28 @@ export const getNeteaseAudioUrl = (id: string) => {
 };
 
 /**
- * Fetch TTML lyrics via Service Worker proxy (same-origin → no CORS).
- * TTML is the highest-quality format (word-level timing).
- * Falls back to direct + external proxies if SW hasn't loaded yet.
+ * Fetch lyrics from AMLL TTML DB via Service Worker proxy.
+ * The SW proxies /api/amll/ncm/:id → amll-ttml-db.stevexmh.net/ncm/:id
+ * This server returns TTML (word-timed) for some songs, LRC for others.
+ * Highest priority — no CORS, same origin, word-level timing when available.
  */
-const fetchTtmlByNeteaseId = async (id: string): Promise<string | null> => {
-  const ttmlUrl = `${TTML_DB_BASE}/ncm/${encodeURIComponent(id)}`;
-
-  const tryFetch = async (url: string): Promise<string | null> => {
-    const res = await fetch(url);
+const fetchAmllLyrics = async (id: string): Promise<string | null> => {
+  const proxyPath = `/api/amll/ncm/${encodeURIComponent(id)}`;
+  try {
+    const res = await fetch(proxyPath);
     if (!res.ok) {
-      if (res.status !== 404) console.warn("TTML fetch failed", res.status, id);
+      if (res.status !== 404) console.warn("[AMLL] fetch failed", res.status, id);
       return null;
     }
     const text = await res.text();
-    const trimmed = text.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  };
-
-  // 1. Primary: same-origin SW proxy (bypasses CORS entirely)
-  try {
-    const proxyPath = `/api/ttml/${encodeURIComponent(id)}`;
-    const result = await tryFetch(proxyPath);
-    if (result) return result;
-  } catch {
-    // SW might not be active yet — fall through to external proxies
+    if (!text.trim()) return null;
+    // Check if it's TTML (XML) or LRC (plain text) by looking at first char
+    console.log(`[AMLL] got lyrics for ${id} (${text.trim().startsWith("<?xml") ? "TTML" : "LRC"}, ${text.length} chars)`);
+    return text;
+  } catch (e) {
+    console.warn("[AMLL] proxy fetch failed:", (e as Error).message);
+    return null;
   }
-
-  // 2. Fallback: external CORS proxies
-  const externalProxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(ttmlUrl)}`,
-    `https://corsproxy.io/?${encodeURIComponent(ttmlUrl)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(ttmlUrl)}`,
-  ];
-  for (const proxyUrl of externalProxies) {
-    try {
-      const result = await tryFetch(proxyUrl);
-      if (result) {
-        console.log(`[TTML] fetched via external proxy: ${id}`);
-        return result;
-      }
-    } catch {
-      // continue
-    }
-  }
-
-  console.warn("[TTML] all strategies failed for", id);
-  return null;
 };
 
 // ── LRCLIB: open-source lyrics database ──
@@ -635,24 +610,31 @@ export const fetchLyricsById = async (
   songId: string,
 ): Promise<MatchedLyricsResult | null> => {
   try {
-    // Fetch TTML and NetEase lyrics in parallel
-    const [ttmlContent, lyricDataResult] = await Promise.all([
-      fetchTtmlByNeteaseId(songId),
+    // 1. AMLL TTML DB (via SW proxy) — highest priority, returns TTML or LRC
+    // 2. NetEase API (via proxy) — fallback for translations and YRC
+    const [amllContent, lyricDataResult] = await Promise.all([
+      fetchAmllLyrics(songId),
       (async () => {
         const lyricUrl = `${NETEASECLOUD_API_BASE}/lyric/new?id=${songId}`;
         try {
           return await fetchViaProxy(lyricUrl);
-        } catch (err) {
-          console.error("Lyric fetch error", err);
+        } catch {
           return null;
         }
       })(),
     ]);
 
+    // Determine TTML vs LRC from AMLL response
+    const isTtml = amllContent?.trim().startsWith("<?xml") ?? false;
+    const ttmlContent = isTtml ? amllContent : null;
+    // AMLL LRC overrides NetEase LRC if available (same server, more reliable)
+    const amllLrc = !isTtml ? amllContent : null;
+
     const lyricData = lyricDataResult as any;
 
     const rawYrc: string | undefined = lyricData?.yrc?.lyric;
-    const rawLrc: string | undefined = lyricData?.lrc?.lyric;
+    // AMLL LRC takes priority over NetEase LRC (same TTML server, more reliable)
+    const rawLrc: string | undefined = amllLrc ?? lyricData?.lrc?.lyric;
     const rawTLrc: string | undefined = lyricData?.tlyric?.lyric;
     const rawYtl: string | undefined = lyricData?.ytlrc?.lyric;
 

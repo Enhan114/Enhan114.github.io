@@ -11,18 +11,18 @@ const isAudio = (url) => /\.(flac|mp3|ogg|wav|m4a|aac)(\?|$)/i.test(url.pathname
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // ── TTML proxy: /api/ttml/:id → amll-ttml-db.stevexmh.net/ncm/:id ──
-  const ttmlMatch = url.pathname.match(/^\/api\/ttml\/(\d+)$/);
-  if (ttmlMatch) {
-    const ttmlUrl = `https://amll-ttml-db.stevexmh.net/ncm/${ttmlMatch[1]}`;
+  // ── AMLL proxy: /api/amll/ncm/:id → amll-ttml-db.stevexmh.net/ncm/:id ──
+  // This server returns both TTML and LRC; we just forward whatever it gives.
+  const amllMatch = url.pathname.match(/^\/api\/amll\/ncm\/(\d+)$/);
+  if (amllMatch) {
+    const amllUrl = `https://amll-ttml-db.stevexmh.net/ncm/${amllMatch[1]}`;
     event.respondWith(
-      fetch(ttmlUrl).then((res) => {
-        // Re-wrap so we can add CORS headers — the SW can do this
+      fetch(amllUrl).then((res) => {
         return new Response(res.body, {
           status: res.status,
           statusText: res.statusText,
           headers: {
-            "Content-Type": "application/xml; charset=utf-8",
+            "Content-Type": res.headers.get("Content-Type") || "application/octet-stream",
             "Access-Control-Allow-Origin": "*",
           },
         });
