@@ -383,6 +383,12 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
                 onClick={() => {
                   if (confirm("确定清除所有缓存？\n\n包括屏蔽列表、歌词数据、快捷键设置。\n页面将自动刷新。")) {
                     window.localStorage.clear();
+                    // Clear audio cache IndexedDB
+                    indexedDB.deleteDatabase("aura-audio-cache");
+                    // Clear Service Worker Cache Storage
+                    if ("caches" in window) {
+                      caches.delete("aura-audio-http").catch(() => {});
+                    }
                     try {
                       const delReq = indexedDB.deleteDatabase("aura-music");
                       delReq.onsuccess = () => window.location.reload();
