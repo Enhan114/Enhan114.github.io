@@ -137,29 +137,38 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
     else uncachedIds.add(s.id);
   }
 
-  // Verify actual cache state from IndexedDB in a single DB connection.
+  // Verify actual cache state from both IndexedDB AND Cache Storage.
+  // The "cached" list reflects what's really on disk, not just memory.
   useEffect(() => {
     if (allSongs.length === 0) { setCheckingCache(false); return; }
     setCheckingCache(true);
     const urls = allSongs.map(s => s.fileUrl);
-    import("../services/audioCacheDB").then(({ batchHasAudioBlobs }) =>
-      batchHasAudioBlobs(urls).then((found) => {
-        // KEY FIX: restore audio cache state regardless of lyrics status
-        // Previously required needsLyricsMatch===false, which caused cached
-        // audio to be "lost" on refresh if lyrics weren't also cached.
-        allSongs.forEach((s) => {
-          if (found.has(s.fileUrl)) {
-            setSongState(prev => {
-              if (prev.get(s.id)?.audio === "done") return prev;
-              const n = new Map(prev);
-              const cur = n.get(s.id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 };
-              n.set(s.id, { ...cur, audio: "done" });
-              return n;
-            });
-          }
-        });
-      }).catch(() => {})
-    ).catch(() => {}).finally(() => setCheckingCache(false));
+
+    const checkCacheStorage = async (): Promise<Set<string>> => {
+      try {
+        const cache = await caches.open("aura-audio-http");
+        const keys = await cache.keys();
+        return new Set(keys.map(r => r.url));
+      } catch { return new Set(); }
+    };
+
+    Promise.all([
+      import("../services/audioCacheDB").then(m => m.batchHasAudioBlobs(urls)).catch(() => new Set<string>()),
+      checkCacheStorage(),
+    ]).then(([indexedDBFound, cacheStorageFound]) => {
+      allSongs.forEach((s) => {
+        // Song is cached if found in EITHER IndexedDB or Cache Storage
+        if (indexedDBFound.has(s.fileUrl) || cacheStorageFound.has(s.fileUrl)) {
+          setSongState(prev => {
+            if (prev.get(s.id)?.audio === "done") return prev;
+            const n = new Map(prev);
+            const cur = n.get(s.id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 };
+            n.set(s.id, { ...cur, audio: "done" });
+            return n;
+          });
+        }
+      });
+    }).catch(() => {}).finally(() => setCheckingCache(false));
   }, [queue.length]);
 
   // Open logic
