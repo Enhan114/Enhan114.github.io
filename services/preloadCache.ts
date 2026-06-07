@@ -151,7 +151,7 @@ export const preloadAll = async (
         } else {
           onSongProgress(song.id, "lyrics", "loading");
           try {
-            const { searchAndMatchLyrics } = await import("../services/lyrics");
+            const { searchAndMatchLyrics } = await import("../services/lyricsService");
             const matchResult = await searchAndMatchLyrics(song.title, song.artist);
             if (matchResult) {
               const { parseLyrics } = await import("../services/lyrics");
