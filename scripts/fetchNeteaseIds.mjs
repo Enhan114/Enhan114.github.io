@@ -1,12 +1,11 @@
 /**
- * Build-time script:
- * 1. Auto-fetch NetEase song IDs via Meting API
- * 2. Download LRC lyrics from Meting (proxies music.163.com)
- * 3. Download TTML from amll-ttml-db.stevexmh.net (word-level timing)
- * 4. Update music-manifest.json with all data
+ * Build-time lyrics fetcher:
+ * 1. Search NetEase ID via music-api.cc.cd
+ * 2. Download TTML from AMLL (word-level timing, most accurate)
+ * 3. Only if no TTML → download LRC from music-api.cc.cd
+ * 4. Update music-manifest.json
  *
- * Runs in Node.js — no browser CORS restrictions.
- * Usage: node scripts/fetchNeteaseIds.mjs
+ * Node.js — no browser CORS.  Usage: node scripts/fetchNeteaseIds.mjs
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
@@ -21,114 +20,83 @@ const musicDir = join(root, "public", "music");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(musicDir, { recursive: true });
 
-const sanitizeFilename = (s) => s.replace(/[<>:"/\\|?*]/g, "");
+const sanitize = (s) => s.replace(/[<>:"/\\|?*]/g, "");
+
+const API = "https://music-api.cc.cd";
+const AMLL = "https://amll-ttml-db.stevexmh.net/ncm";
 
 const fetchJson = async (url) => {
   const res = await fetch(url);
-  if (!res.ok) return null;
-  return await res.json();
+  return res.ok ? await res.json() : null;
 };
 
 const fetchText = async (url) => {
   const res = await fetch(url);
-  if (!res.ok) return null;
-  const text = await res.text();
-  return text.trim().length > 0 ? text : null;
+  return res.ok ? (await res.text()).trim() : null;
 };
-
-// Vercel NetEase API base
-const API = "https://music-api.cc.cd";
-
-// Step 1: Search NetEase for song ID
-const searchNeteaseId = async (title) => {
-  const url = `${API}/search?keywords=${encodeURIComponent(title)}&type=1&limit=3`;
-  const data = await fetchJson(url);
-  const songs = data?.result?.songs ?? [];
-  return songs.length > 0 ? String(songs[0].id) : null;
-};
-
-// Step 2: Download LRC from NetEase API
-const downloadLrc = async (id) => {
-  const data = await fetchJson(`${API}/lyric/new?id=${id}`);
-  const lrc = data?.lrc?.lyric;
-  return lrc?.trim().length > 0 ? lrc : null;
-};
-
-// Step 3: Download TTML from AMLL (word-level timing, Node.js no CORS)
-const downloadTtml = async (id) => fetchText(`https://amll-ttml-db.stevexmh.net/ncm/${id}`);
 
 const main = async () => {
-  console.log("🎵 Fetching NetEase IDs + LRC + TTML lyrics...\n");
-
-  const raw = readFileSync(manifestPath, "utf-8");
-  const manifest = JSON.parse(raw);
-
-  let idsFound = 0;
-  let lrcSaved = 0;
-  let ttmlSaved = 0;
+  console.log("🎵 Lyrics: AMLL TTML first, API LRC fallback...\n");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+  let ids = 0, ttml = 0, lrc = 0;
 
   for (const entry of manifest) {
-    const fname = sanitizeFilename(entry.title);
-    const lrcFile = `${fname}.lrc`;
-    const ttmlFile = `${fname}.ttml`;
-
-    const hasAll = entry.neteaseId?.trim()
-      && entry.lyricsPath
-      && existsSync(join(musicDir, lrcFile));
-
-    if (hasAll) {
-      console.log(`  ⏭️  ${entry.title} — already complete`);
-      idsFound++;
-      lrcSaved++;
-      if (entry.ttmlPath && existsSync(join(musicDir, ttmlFile))) ttmlSaved++;
-      continue;
-    }
+    const fn = sanitize(entry.title);
+    const ttmlFile = `${fn}.ttml`;
+    const lrcFile = `${fn}.lrc`;
 
     console.log(`🔎 ${entry.artist} — ${entry.title}`);
 
-    // Fetch NetEase ID
+    // 1. Search NetEase ID if missing
     if (!entry.neteaseId?.trim()) {
-      const id = await searchNeteaseId(entry.title);
-      if (id) { entry.neteaseId = id; idsFound++; console.log(`  ✅ ID: ${id}`); }
-      else { console.log(`  ❌ No ID`); await sleep(350); continue; }
+      const data = await fetchJson(`${API}/search?keywords=${encodeURIComponent(entry.title)}&type=1&limit=3`);
+      const songs = data?.result?.songs ?? [];
+      if (songs.length === 0) { console.log(`  ❌ No ID`); await sleep(400); continue; }
+      entry.neteaseId = String(songs[0].id);
+      console.log(`  ✅ ID: ${entry.neteaseId}`);
     } else {
       console.log(`  📌 ID: ${entry.neteaseId}`);
     }
-    idsFound++;
+    ids++;
 
-    // Download LRC (from music.163.com via Meting)
-    if (!existsSync(join(musicDir, lrcFile))) {
-      const lrc = await downloadLrc(entry.neteaseId);
-      if (lrc && lrc.length > 10) {
-        writeFileSync(join(musicDir, lrcFile), lrc, "utf-8");
-        lrcSaved++;
-        console.log(`  📝 LRC saved: ${lrcFile}`);
-      } else {
-        console.log(`  ⚠️  No LRC`);
-      }
-    } else { lrcSaved++; }
-
-    // Download TTML (from AMLL, word-level timing)
-    if (!existsSync(join(musicDir, ttmlFile))) {
-      const ttml = await downloadTtml(entry.neteaseId);
-      if (ttml && ttml.length > 30) {
-        writeFileSync(join(musicDir, ttmlFile), ttml, "utf-8");
+    // 2. AMLL TTML first (most accurate word-level timing)
+    let hasTtml = existsSync(join(musicDir, ttmlFile));
+    if (!hasTtml) {
+      const content = await fetchText(`${AMLL}/${entry.neteaseId}`);
+      if (content && content.length > 30) {
+        writeFileSync(join(musicDir, ttmlFile), content, "utf-8");
         entry.ttmlPath = `music/${ttmlFile}`;
-        ttmlSaved++;
-        console.log(`  🎯 TTML saved: ${ttmlFile}`);
-      } else {
-        console.log(`  ⚠️  No TTML`);
+        hasTtml = true;
+        ttml++;
+        console.log(`  🎯 TTML: ${ttmlFile}`);
       }
-    } else { ttmlSaved++; }
+    } else { ttml++; }
 
-    // Always set lyricsPath
-    entry.lyricsPath = `music/${lrcFile}`;
+    // 3. API LRC fallback (only if no TTML)
+    if (!hasTtml) {
+      let hasLrc = existsSync(join(musicDir, lrcFile));
+      if (!hasLrc) {
+        const data = await fetchJson(`${API}/lyric/new?id=${entry.neteaseId}`);
+        const content = data?.lrc?.lyric;
+        if (content && content.length > 10) {
+          writeFileSync(join(musicDir, lrcFile), content, "utf-8");
+          hasLrc = true;
+          lrc++;
+          console.log(`  📝 LRC: ${lrcFile}`);
+        }
+      } else { lrc++; }
+      if (hasLrc) entry.lyricsPath = `music/${lrcFile}`;
+      else console.log(`  ⚠️  No lyrics`);
+    }
 
-    await sleep(500);
+    // If we have TTML, it's the primary source. LRC path is cleared.
+    if (hasTtml && !entry.ttmlPath) entry.ttmlPath = `music/${ttmlFile}`;
+
+    await sleep(400);
   }
 
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
-  console.log(`\n✅ Done! ${idsFound} IDs, ${lrcSaved} LRC, ${ttmlSaved} TTML, ${manifest.length} total.`);
+  console.log(`\n✅ Done! ${ids} IDs, ${ttml} TTML, ${lrc} LRC, ${manifest.length} total.`);
 };
 
 main().catch((e) => { console.error("Failed:", e); process.exit(1); });
