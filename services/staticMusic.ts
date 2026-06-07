@@ -8,6 +8,7 @@ interface ManifestEntry {
   filePath: string;
   lyricsPath?: string;
   ttmlPath?: string;
+  yrcPath?: string;
   coverPath?: string;
   neteaseId?: string;
 }
@@ -50,12 +51,11 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       }
     }
 
-    // Load local lyrics — prefer TTML (word-level timing) over LRC (line-level)
+    // Load word-level lyrics — TTML (AMLL) or YRC (NetEase API)
     let lyrics: import("../types").LyricLine[] = [];
     let needsLyricsMatch = true;
     const { parseLyrics, isTtmlFormat } = await import("./lyrics");
 
-    // Load TTML first if available (better word-level timing)
     if (item.ttmlPath) {
       try {
         const url = resolveAssetUrl(item.ttmlPath);
@@ -65,23 +65,23 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
           if (text.trim() && isTtmlFormat(text)) {
             lyrics = parseLyrics(text);
             needsLyricsMatch = false;
-            console.log(`[Static] loaded TTML: ${item.title} (${lyrics.length} lines)`);
+            console.log(`[Static] TTML: ${item.title} (${lyrics.length} lines)`);
           }
         }
       } catch { /* unavailable */ }
     }
 
-    // Fall back to LRC
-    if (lyrics.length === 0 && item.lyricsPath) {
+    if (lyrics.length === 0 && item.yrcPath) {
       try {
-        const url = resolveAssetUrl(item.lyricsPath);
+        const url = resolveAssetUrl(item.yrcPath);
         const res = await fetch(url);
         if (res.ok) {
           const text = await res.text();
           if (text.trim()) {
-            lyrics = parseLyrics(text);
+            const { parseNeteaseLyrics } = await import("./lyrics/netease");
+            lyrics = parseNeteaseLyrics(text);
             needsLyricsMatch = false;
-            console.log(`[Static] loaded LRC: ${item.title} (${lyrics.length} lines)`);
+            console.log(`[Static] YRC: ${item.title} (${lyrics.length} lines)`);
           }
         }
       } catch { /* unavailable */ }
