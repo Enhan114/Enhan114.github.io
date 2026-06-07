@@ -30,7 +30,10 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("message", (event) => {
-  const { type } = event.data || {};
+  const { type, url } = event.data || {};
+  if (type === "DELETE_AUDIO_CACHE" && url) {
+    caches.open(AUDIO_CACHE).then((cache) => cache.delete(url));
+  }
   if (type === "DELETE_ALL_AUDIO_CACHE") {
     caches.delete(AUDIO_CACHE);
   }

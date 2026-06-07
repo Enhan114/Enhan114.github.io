@@ -143,32 +143,27 @@ export const preloadAll = async (
         }
         report(song.title, "audio");
 
-        // Lyrics
+        // Lyrics — skip cloud matching if local LRC was loaded at init
         onProgress({ done, total: totalSteps, current: song.title, currentType: "lyrics" });
-        onSongProgress(song.id, "lyrics", "loading");
-        try {
-          const { fetchLyricsById, searchAndMatchLyrics } = await import("../services/lyrics");
-          let matchResult: import("../services/lyricsService").MatchedLyricsResult | null = null;
-
-          // If song already has neteaseId, fetch directly — no search needed
-          if (song.neteaseId) {
-            matchResult = await fetchLyricsById(song.neteaseId);
-          }
-          // Fall back to full search
-          if (!matchResult) {
-            matchResult = await searchAndMatchLyrics(song.title, song.artist);
-          }
-
-          if (matchResult) {
-            const { parseLyrics } = await import("../services/lyrics");
-            const lines = matchResult.ttml ? parseLyrics(matchResult.ttml) : parseLyrics(matchResult.lrc ?? "", matchResult.tLrc, { yrcContent: matchResult.yrc });
-            onSongProgress(song.id, "lyrics", "done", undefined, lines);
-          } else {
+        if ((song.lyrics?.length ?? 0) > 0 && song.needsLyricsMatch === false) {
+          // Already have local lyrics from build-time download
+          onSongProgress(song.id, "lyrics", "done", undefined, song.lyrics);
+        } else {
+          onSongProgress(song.id, "lyrics", "loading");
+          try {
+            const { searchAndMatchLyrics } = await import("../services/lyrics");
+            const matchResult = await searchAndMatchLyrics(song.title, song.artist);
+            if (matchResult) {
+              const { parseLyrics } = await import("../services/lyrics");
+              const lines = matchResult.ttml ? parseLyrics(matchResult.ttml) : parseLyrics(matchResult.lrc ?? "", matchResult.tLrc, { yrcContent: matchResult.yrc });
+              onSongProgress(song.id, "lyrics", "done", undefined, lines);
+            } else {
+              onSongProgress(song.id, "lyrics", "error");
+            }
+          } catch (e) {
+            console.warn(`[PreloadCache] lyrics FAILED: ${song.title}`, e);
             onSongProgress(song.id, "lyrics", "error");
           }
-        } catch (e) {
-          console.warn(`[PreloadCache] lyrics FAILED: ${song.title}`, e);
-          onSongProgress(song.id, "lyrics", "error");
         }
         report(song.title, "lyrics");
       }),
