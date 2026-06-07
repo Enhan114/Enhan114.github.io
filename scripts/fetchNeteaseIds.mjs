@@ -36,17 +36,23 @@ const fetchText = async (url) => {
   return text.trim().length > 0 ? text : null;
 };
 
-// Step 1: Search Meting for NetEase ID
+// Vercel NetEase API base
+const API = "https://api-enhanced-ten-delta.vercel.app";
+
+// Step 1: Search NetEase for song ID
 const searchNeteaseId = async (title) => {
-  const url = `https://api.qijieya.cn/meting/?server=netease&type=search&id=${encodeURIComponent(title)}&limit=3`;
+  const url = `${API}/search?keywords=${encodeURIComponent(title)}&type=1&limit=3`;
   const data = await fetchJson(url);
-  if (!Array.isArray(data) || data.length === 0) return null;
-  const idMatch = data[0].url?.match(/[?&]id=(\d+)/);
-  return idMatch ? idMatch[1] : null;
+  const songs = data?.result?.songs ?? [];
+  return songs.length > 0 ? String(songs[0].id) : null;
 };
 
-// Step 2: Download LRC from Meting (proxies music.163.com)
-const downloadLrc = async (id) => fetchText(`https://api.qijieya.cn/meting/?server=netease&type=lrc&id=${id}`);
+// Step 2: Download LRC from NetEase API
+const downloadLrc = async (id) => {
+  const data = await fetchJson(`${API}/lyric?id=${id}`);
+  const lrc = data?.lrc?.lyric;
+  return lrc?.trim().length > 0 ? lrc : null;
+};
 
 // Step 3: Download TTML from AMLL (word-level timing, Node.js no CORS)
 const downloadTtml = async (id) => fetchText(`https://amll-ttml-db.stevexmh.net/ncm/${id}`);

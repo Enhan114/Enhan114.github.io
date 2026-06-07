@@ -1,10 +1,8 @@
 import { fetchViaProxy } from "./utils";
 import { isMetadataLine } from "./lyrics/types";
 
-const METING_API = "https://api.qijieya.cn/meting/";
-const NETEASE_API_BASE = "https://music.163.com/api";
+const NETEASE_API = "https://api-enhanced-ten-delta.vercel.app";
 const TTML_DB_BASE = "https://amll-ttml-db.stevexmh.net";
-const LRCLIB_BASE = "https://lrclib.net/api";
 
 const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)$/;
 
@@ -454,11 +452,16 @@ export const searchNetEase = async (
   keyword: string,
   options: SearchOptions = {},
 ): Promise<NeteaseTrackInfo[]> => {
-  // music.163.com is CORS-blocked and all free CORS proxies are down.
-  // For automatic lyrics, LRCLIB handles it. For TTML quality with
-  // per-word timing, add "neteaseId" to music-manifest.json entries.
-  console.log("[NetEase] skipped — CORS-blocked, using LRCLIB");
-  return [];
+  const url = `${NETEASE_API}/search?keywords=${encodeURIComponent(keyword)}&type=1&limit=${limit}&offset=${offset}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data?.result?.songs ?? []).map(mapNeteaseSongToTrack);
+  } catch (err) {
+    console.warn("[NetEase] search failed:", (err as Error).message);
+    return [];
+  }
 };
 
 export const fetchNeteasePlaylist = async (
@@ -473,7 +476,7 @@ export const fetchNeteasePlaylist = async (
     let shouldContinue = true;
 
     while (shouldContinue) {
-      const url = `https://music.163.com/api/playlist/track/all?id=${playlistId}&limit=${limit}&offset=${offset}`;
+      const url = `${NETEASE_API}/playlist/track/all?id=${playlistId}&limit=${limit}&offset=${offset}`;
       const res = await fetch(url);
       if (!res.ok) break;
       const data = (await res.json()) as NeteasePlaylistResponse;
@@ -505,8 +508,10 @@ export const fetchNeteaseSong = async (
   songId: string,
 ): Promise<NeteaseTrackInfo | null> => {
   try {
-    const url = `https://music.163.com/api/song/detail?ids=${songId}`;
-    const data = (await fetchViaProxy(url)) as NeteaseSongDetailResponse;
+    const url = `${NETEASE_API}/song/detail?ids=${songId}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = (await res.json()) as NeteaseSongDetailResponse;
     const track = data.songs?.[0];
     if (data.code === 200 && track) {
       return mapNeteaseSongToTrack(track);
@@ -519,24 +524,57 @@ export const fetchNeteaseSong = async (
 };
 
 // Keeps the old search for lyric matching fallbacks
-// Lyrics are pre-downloaded at build time (via fetchNeteaseIds.mjs) and
-// stored as local .lrc/.ttml files. Cloud matching is only used as a
-// last resort for songs added without running the build script.
 export const searchAndMatchLyrics = async (
-  _title: string,
-  _artist: string,
-  _durationSec?: number,
+  title: string,
+  artist: string,
+  durationSec?: number,
 ): Promise<MatchedLyricsResult | null> => {
-  // Cloud matching is unavailable from the browser (CORS blocks
-  // music.163.com and amll-ttml-db.stevexmh.net). Lyrics come from
-  // local files downloaded at build time.
-  return null;
+  try {
+    const songs = await searchNetEase(`${title} ${artist}`, { limit: 10 });
+    if (songs.length === 0) {
+      console.warn("[Lyrics] No cloud results");
+      return null;
+    }
+
+    let bestSong = songs[0];
+    if (durationSec && durationSec > 0) {
+      let bestDiff = Infinity;
+      for (const s of songs) {
+        const neteaseSec = (s.duration ?? 0) / 1000;
+        if (neteaseSec <= 0) continue;
+        const diff = Math.abs(neteaseSec - durationSec);
+        if (diff < bestDiff) { bestDiff = diff; bestSong = s; }
+      }
+    }
+
+    console.log(`Matched Song ID: ${bestSong.id} — ${bestSong.name}`);
+    const lyrics = await fetchLyricsById(bestSong.id);
+    if (lyrics) {
+      lyrics.matchedArtist = bestSong.artist;
+      lyrics.matchedTitle = bestSong.name;
+      lyrics.matchedAlbum = bestSong.album;
+      lyrics.matchedNeteaseId = bestSong.id;
+    }
+    return lyrics;
+  } catch (error) {
+    console.error("Cloud lyrics match failed:", error);
+    return null;
+  }
 };
 
 export const fetchLyricsById = async (
   songId: string,
 ): Promise<MatchedLyricsResult | null> => {
-  // Local LRC files downloaded at build time (via Meting API) are the
-  // primary lyrics source — no cloud fetch needed. AMLL is CORS-blocked.
-  return null;
+  try {
+    const url = `${NETEASE_API}/lyric?id=${encodeURIComponent(songId)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const rawLrc: string | undefined = data?.lrc?.lyric;
+    const rawTLrc: string | undefined = data?.tlyric?.lyric;
+    if (!rawLrc && !rawTLrc) return null;
+    return { lrc: rawLrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
+  } catch {
+    return null;
+  }
 };

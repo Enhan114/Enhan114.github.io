@@ -21,16 +21,17 @@ const saveOverrides = (map: Record<string, string>) => {
   try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map)); } catch {}
 };
 
-// Fetch LRC from Meting API
+// Fetch LRC from Vercel NetEase API
 const fetchLrcById = async (neteaseId: string): Promise<import("../types").LyricLine[]> => {
   try {
-    const url = `https://api.qijieya.cn/meting/?server=netease&type=lrc&id=${neteaseId}`;
+    const url = `https://api-enhanced-ten-delta.vercel.app/lyric?id=${neteaseId}`;
     const res = await fetch(url);
     if (!res.ok) return [];
-    const text = await res.text();
-    if (!text.trim() || text.trim().length < 10) return [];
+    const data = await res.json();
+    const lrc = data?.lrc?.lyric;
+    if (!lrc || lrc.trim().length < 10) return [];
     const { parseLyrics } = await import("../services/lyrics");
-    return parseLyrics(text);
+    return parseLyrics(lrc);
   } catch {
     return [];
   }
