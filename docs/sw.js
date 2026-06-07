@@ -20,13 +20,23 @@ self.addEventListener("fetch", (event) => {
           // Found in Cache Storage — serve from there
           return cached;
         }
-        // Not in our cache — fetch from network, bypass browser HTTP cache
-        return fetch(event.request, { cache: "no-store" }).then((response) => {
-          if (response.ok) {
-            // Store a clone in Cache Storage for future use
-            cache.put(event.request, response.clone());
+        // Not in our cache — fetch from network
+        // Use cache: "reload" to bypass browser HTTP cache but still follow
+        // standard HTTP caching semantics for Cache Storage.
+        return fetch(event.request, { cache: "reload" }).then((response) => {
+          // Only cache full responses (200). Range requests (206) are NOT
+          // cacheable in Cache Storage and will throw if we try.
+          if (response.status === 200) {
+            try {
+              cache.put(event.request, response.clone());
+            } catch {
+              // ignore cache-storage errors
+            }
           }
           return response;
+        }).catch(() => {
+          // Network failed — fall through (browser will show error)
+          return new Response(null, { status: 503 });
         });
       })
     )
