@@ -12,35 +12,45 @@ const STORE = "audio-cache";
 
 // ── Singleton: prevent concurrent open() calls from racing ──
 let _dbPromise: Promise<IDBDatabase> | null = null;
+let _dbVersion = 1; // auto-bumped if store is missing (heals corrupted DBs)
 
 const open = (): Promise<IDBDatabase> => {
-  // Reuse existing promise if one is in flight
   if (_dbPromise) return _dbPromise;
 
-  _dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE);
-      }
-    };
-    req.onsuccess = () => {
-      resolve(req.result);
-    };
-    req.onerror = () => {
-      _dbPromise = null; // allow retry on next call
-      reject(req.error ?? new Error("Failed to open IndexedDB"));
-    };
-    req.onblocked = () => {
-      // Another connection is holding a lock — close it and retry
-      console.warn("[CacheDB] blocked, closing old connection...");
-      // The old connection (if any) should close; we retry via reject+retry
-      _dbPromise = null;
-      reject(new Error("IndexedDB open blocked"));
-    };
-  });
+  const tryOpen = (version: number): Promise<IDBDatabase> =>
+    new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB, version);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE);
+        }
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        // Heal corrupted DBs that exist but have no store
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.close();
+          _dbVersion = version + 1;
+          _dbPromise = null;
+          // Retry with higher version — triggers onupgradeneeded
+          _dbPromise = tryOpen(_dbVersion);
+          resolve(_dbPromise);
+          return;
+        }
+        resolve(db);
+      };
+      req.onerror = () => {
+        _dbPromise = null;
+        reject(req.error ?? new Error("Failed to open IndexedDB"));
+      };
+      req.onblocked = () => {
+        _dbPromise = null;
+        reject(new Error("IndexedDB open blocked"));
+      };
+    });
 
+  _dbPromise = tryOpen(_dbVersion);
   return _dbPromise;
 };
 
