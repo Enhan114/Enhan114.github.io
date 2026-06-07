@@ -37,7 +37,7 @@ const fetchText = async (url) => {
 };
 
 // Vercel NetEase API base
-const API = "https://api-enhanced-ten-delta.vercel.app";
+const API = "https://music-api.cc.cd";
 
 // Step 1: Search NetEase for song ID
 const searchNeteaseId = async (title) => {
