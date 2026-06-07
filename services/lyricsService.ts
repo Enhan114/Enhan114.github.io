@@ -454,6 +454,7 @@ export const searchNetEase = async (
   keyword: string,
   options: SearchOptions = {},
 ): Promise<NeteaseTrackInfo[]> => {
+  const { limit = 20, offset = 0 } = options;
   const url = `/api/netease/search?q=${encodeURIComponent(keyword)}&limit=${limit}&offset=${offset}`;
   try {
     const res = await fetch(url);
