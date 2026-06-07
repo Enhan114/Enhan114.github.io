@@ -929,6 +929,7 @@ export const usePlayer = ({
           const fallbackBlob = await response.blob();
           if (canceled) return;
           audioResourceCache.set(fileUrl, fallbackBlob);
+          try { const { saveAudioBlob } = await import("../services/audioCacheDB"); await saveAudioBlob(fileUrl, fallbackBlob); } catch {}
           setBufferProgress(1);
           // Don't switch - will be used next time
           return;
@@ -961,6 +962,8 @@ export const usePlayer = ({
           type: response.headers.get("content-type") || "audio/mpeg",
         });
         audioResourceCache.set(fileUrl, blob);
+        // Persist to IndexedDB so cache survives refresh
+        try { const { saveAudioBlob } = await import("../services/audioCacheDB"); await saveAudioBlob(fileUrl, blob); } catch {}
         setBufferProgress(1);
         // Don't switch to blob URL during playback - it would restart the audio
         // The cached blob will be used automatically next time this song is played
