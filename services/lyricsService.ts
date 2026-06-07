@@ -345,8 +345,9 @@ export const getNeteaseAudioUrl = (id: string) => {
 };
 
 /**
- * Fetch TTML lyrics through multiple CORS proxy fallbacks.
+ * Fetch TTML lyrics via Service Worker proxy (same-origin → no CORS).
  * TTML is the highest-quality format (word-level timing).
+ * Falls back to direct + external proxies if SW hasn't loaded yet.
  */
 const fetchTtmlByNeteaseId = async (id: string): Promise<string | null> => {
   const ttmlUrl = `${TTML_DB_BASE}/ncm/${encodeURIComponent(id)}`;
@@ -362,23 +363,30 @@ const fetchTtmlByNeteaseId = async (id: string): Promise<string | null> => {
     return trimmed.length > 0 ? trimmed : null;
   };
 
-  // List of fetch strategies: [label, url-factory]
-  const strategies: Array<[string, string]> = [
-    ["direct", ttmlUrl],
-    ["allorigins", `https://api.allorigins.win/raw?url=${encodeURIComponent(ttmlUrl)}`],
-    ["corsproxy", `https://corsproxy.io/?${encodeURIComponent(ttmlUrl)}`],
-    ["codetabs", `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(ttmlUrl)}`],
-  ];
+  // 1. Primary: same-origin SW proxy (bypasses CORS entirely)
+  try {
+    const proxyPath = `/api/ttml/${encodeURIComponent(id)}`;
+    const result = await tryFetch(proxyPath);
+    if (result) return result;
+  } catch {
+    // SW might not be active yet — fall through to external proxies
+  }
 
-  for (const [label, url] of strategies) {
+  // 2. Fallback: external CORS proxies
+  const externalProxies = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(ttmlUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(ttmlUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(ttmlUrl)}`,
+  ];
+  for (const proxyUrl of externalProxies) {
     try {
-      const result = await tryFetch(url);
+      const result = await tryFetch(proxyUrl);
       if (result) {
-        if (label !== "direct") console.log(`[TTML] fetched via ${label}: ${id}`);
+        console.log(`[TTML] fetched via external proxy: ${id}`);
         return result;
       }
     } catch {
-      // try next strategy
+      // continue
     }
   }
 
