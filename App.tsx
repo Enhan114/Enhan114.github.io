@@ -13,6 +13,7 @@ import TopBar from "./components/TopBar";
 import SearchModal from "./components/SearchModal";
 import { ShortcutBinding, loadBindings } from "./services/shortcutSettings";
 import { getCacheBustedUrl } from "./services/cacheVersion";
+import { registerSW } from "./services/swCache";
 import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
 import { useI18n } from "./hooks/useI18n";
@@ -23,6 +24,9 @@ import { audioResourceCache } from "./services/cache";
 import MediaSessionController from "./components/MediaSessionController";
 
 const App: React.FC = () => {
+  // Register Service Worker for cache-controlled audio serving
+  useEffect(() => { registerSW(); }, []);
+
   const { toast } = useToast();
   const { dict } = useI18n();
   const playlist = usePlaylist();
