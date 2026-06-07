@@ -7,6 +7,7 @@ import LyricsView from "./components/LyricsView";
 import PlaylistPanel from "./components/PlaylistPanel";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
 import ShortcutSettings from "./components/ShortcutSettings";
+import IdManager from "./components/IdManager";
 import WelcomeDialog from "./components/WelcomeDialog";
 import PreloadDialog from "./components/PreloadDialog";
 import TopBar from "./components/TopBar";
@@ -67,6 +68,7 @@ const App: React.FC = () => {
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showShortcutSettings, setShowShortcutSettings] = useState(false);
+  const [showIdManager, setShowIdManager] = useState(false);
   const [forceShowCacheManager, setForceShowCacheManager] = useState(false);
   const [showVolumePopup, setShowVolumePopup] = useState(false);
   const [showSettingsPopup, setShowSettingsPopup] = useState(false);
@@ -454,6 +456,24 @@ const App: React.FC = () => {
         onOpenCacheManager={() => {
           setShowShortcutSettings(false);
           setTimeout(() => setForceShowCacheManager(true), 100);
+        }}
+        onOpenIdManager={() => {
+          setShowShortcutSettings(false);
+          setTimeout(() => setShowIdManager(true), 100);
+        }}
+      />
+
+      <IdManager
+        isOpen={showIdManager}
+        onClose={() => setShowIdManager(false)}
+        queue={playlist.queue}
+        onIdChanged={(songId, newNeteaseId, newLyrics) => {
+          playlist.updateSongInQueue(songId, {
+            neteaseId: newNeteaseId,
+            isNetease: true,
+            lyrics: newLyrics,
+            needsLyricsMatch: false,
+          });
         }}
       />
 

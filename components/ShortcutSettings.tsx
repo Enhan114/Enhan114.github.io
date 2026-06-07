@@ -24,6 +24,7 @@ interface ShortcutSettingsProps {
   onBindingsChanged: (bindings: ShortcutBinding[]) => void;
   onUnblock?: (songs: BlockedSongInfo[]) => void;
   onOpenCacheManager?: () => void;
+  onOpenIdManager?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +378,11 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
               {onOpenCacheManager && (
                 <button onClick={onOpenCacheManager} className="text-xs text-white/40 hover:text-white/70 transition-colors px-2 py-1">
                   缓存管理
+                </button>
+              )}
+              {onOpenIdManager && (
+                <button onClick={onOpenIdManager} className="text-xs text-white/40 hover:text-white/70 transition-colors px-2 py-1">
+                  ID管理
                 </button>
               )}
               <button
