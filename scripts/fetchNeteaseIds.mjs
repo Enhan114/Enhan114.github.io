@@ -49,7 +49,7 @@ const searchNeteaseId = async (title) => {
 
 // Step 2: Download LRC from NetEase API
 const downloadLrc = async (id) => {
-  const data = await fetchJson(`${API}/lyric?id=${id}`);
+  const data = await fetchJson(`${API}/lyric/new?id=${id}`);
   const lrc = data?.lrc?.lyric;
   return lrc?.trim().length > 0 ? lrc : null;
 };

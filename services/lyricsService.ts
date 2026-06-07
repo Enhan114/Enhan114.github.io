@@ -567,15 +567,16 @@ export const fetchLyricsById = async (
   songId: string,
 ): Promise<MatchedLyricsResult | null> => {
   try {
-    const url = `${NETEASE_API}/lyric?id=${encodeURIComponent(songId)}`;
+    // /lyric/new returns yrc (word-level timing), lrc, tlyric (translation)
+    const url = `${NETEASE_API}/lyric/new?id=${encodeURIComponent(songId)}`;
     const res = await fetch(url);
     if (!res.ok) return null;
     const data = await res.json();
-    // YRC = word-level timing (逐字歌词), LRC = line-level, TLRC = translation
     const rawYrc: string | undefined = data?.yrc?.lyric;
     const rawLrc: string | undefined = data?.lrc?.lyric;
     const rawTLrc: string | undefined = data?.tlyric?.lyric;
     if (!rawYrc && !rawLrc) return null;
+    console.log(`[Lyrics] got ${rawYrc ? 'YRC' : 'LRC'} for ${songId} (${(rawYrc||rawLrc||'').length} chars)`);
     return {
       lrc: rawLrc,
       yrc: rawYrc,

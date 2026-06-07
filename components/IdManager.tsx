@@ -24,7 +24,7 @@ const saveOverrides = (map: Record<string, string>) => {
 // Fetch LRC from Vercel NetEase API
 const fetchLrcById = async (neteaseId: string): Promise<import("../types").LyricLine[]> => {
   try {
-    const url = `https://music-api.cc.cd/lyric?id=${neteaseId}`;
+    const url = `https://music-api.cc.cd/lyric/new?id=${neteaseId}`;
     const res = await fetch(url);
     if (!res.ok) return [];
     const data = await res.json();
