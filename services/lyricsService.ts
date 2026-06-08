@@ -567,7 +567,7 @@ export const fetchLyricsById = async (
   songId: string,
 ): Promise<MatchedLyricsResult | null> => {
   try {
-    // /lyric/new returns yrc (word-level timing), lrc, tlyric (translation)
+    // 1. API /lyric/new — try YRC (word-level) first
     const url = `${NETEASE_API}/lyric/new?id=${encodeURIComponent(songId)}`;
     const res = await fetch(url);
     if (!res.ok) return null;
@@ -575,14 +575,30 @@ export const fetchLyricsById = async (
     const rawYrc: string | undefined = data?.yrc?.lyric;
     const rawLrc: string | undefined = data?.lrc?.lyric;
     const rawTLrc: string | undefined = data?.tlyric?.lyric;
-    if (!rawYrc && !rawLrc) return null;
-    console.log(`[Lyrics] got ${rawYrc ? 'YRC' : 'LRC'} for ${songId} (${(rawYrc||rawLrc||'').length} chars)`);
-    return {
-      lrc: rawLrc,
-      yrc: rawYrc,
-      tLrc: rawTLrc?.trim() || undefined,
-      metadata: [],
-    };
+
+    if (rawYrc) {
+      console.log(`[Lyrics] got YRC for ${songId}`);
+      return { lrc: rawLrc, yrc: rawYrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
+    }
+
+    // 2. No YRC → try AMLL TTML for word-level timing
+    try {
+      const ttmlRes = await fetch(`${TTML_DB_BASE}/ncm/${songId}`);
+      if (ttmlRes.ok) {
+        const ttml = await ttmlRes.text();
+        if (ttml.trim() && ttml.length > 30) {
+          console.log(`[Lyrics] got AMLL TTML for ${songId}`);
+          return { ttml, lrc: rawLrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
+        }
+      }
+    } catch { /* AMLL unreachable */ }
+
+    // 3. Fall back to LRC
+    if (rawLrc) {
+      console.log(`[Lyrics] got LRC for ${songId}`);
+      return { lrc: rawLrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
+    }
+    return null;
   } catch {
     return null;
   }
