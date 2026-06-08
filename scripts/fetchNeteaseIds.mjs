@@ -53,20 +53,15 @@ const main = async () => {
     ids++;
 
     // 2. AMLL TTML first (most accurate word-level timing)
-    const hasTtmlOnDisk = existsSync(join(musicDir, ttmlFile));
-    let gotTtml = hasTtmlOnDisk;
-    if (!hasTtmlOnDisk) {
+    if (!existsSync(join(musicDir, ttmlFile))) {
       const content = await fetchText(`${AMLL}/${entry.neteaseId}`);
       if (content && content.length > 30) {
         writeFileSync(join(musicDir, ttmlFile), content, "utf-8");
-        gotTtml = true;
       }
     }
-    if (gotTtml) {
+    if (existsSync(join(musicDir, ttmlFile))) {
       entry.ttmlPath = `music/${ttmlFile}`;
       delete entry.lyricsPath; delete entry.yrcPath;
-      try { unlinkSync(join(musicDir, yrcFile)); } catch {}
-      try { unlinkSync(join(musicDir, `${fn}.lrc`)); } catch {}
       ttml++;
       console.log(`  🎯 TTML`);
       await sleep(400);
