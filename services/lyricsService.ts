@@ -581,7 +581,13 @@ export const fetchLyricsById = async (
       return { lrc: rawLrc, yrc: rawYrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
     }
 
-    // 2. No YRC → try AMLL TTML
+    // 2. No YRC → API LRC (still from user's API)
+    if (rawLrc) {
+      console.log(`[Lyrics] got LRC for ${songId}`);
+      return { lrc: rawLrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
+    }
+
+    // 3. API has nothing → AMLL TTML as last resort
     try {
       const ttmlRes = await fetch(`${TTML_DB_BASE}/ncm/${songId}`);
       if (ttmlRes.ok) {
@@ -592,12 +598,6 @@ export const fetchLyricsById = async (
         }
       }
     } catch { /* AMLL unreachable */ }
-
-    // 3. Neither YRC nor AMLL → API LRC as last resort
-    if (rawLrc) {
-      console.log(`[Lyrics] got LRC for ${songId}`);
-      return { lrc: rawLrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
-    }
     return null;
   } catch {
     return null;
