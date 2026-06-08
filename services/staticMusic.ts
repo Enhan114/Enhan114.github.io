@@ -56,28 +56,7 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
     let needsLyricsMatch = true;
     const { parseLyrics, isTtmlFormat } = await import("./lyrics");
 
-    if (item.yrcPath) {
-      try {
-        const url = resolveAssetUrl(item.yrcPath);
-        const res = await fetch(url);
-        if (res.ok) {
-          const text = await res.text();
-          if (text.trim()) {
-            // Try YRC first, fall back to LRC parsing
-            const { parseNeteaseLyrics } = await import("./lyrics/netease");
-            lyrics = parseNeteaseLyrics(text);
-            if (lyrics.length === 0) {
-              const { parseLyrics } = await import("./lyrics");
-              lyrics = parseLyrics(text);
-            }
-            needsLyricsMatch = false;
-            console.log(`[Static] YRC/LRC: ${item.title} (${lyrics.length} lines)`);
-          }
-        }
-      } catch { /* unavailable */ }
-    }
-
-    if (lyrics.length === 0 && item.ttmlPath) {
+    if (item.ttmlPath) {
       try {
         const url = resolveAssetUrl(item.ttmlPath);
         const res = await fetch(url);
@@ -87,6 +66,25 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
             lyrics = parseLyrics(text);
             needsLyricsMatch = false;
             console.log(`[Static] TTML: ${item.title} (${lyrics.length} lines)`);
+          }
+        }
+      } catch { /* unavailable */ }
+    }
+
+    if (lyrics.length === 0 && item.yrcPath) {
+      try {
+        const url = resolveAssetUrl(item.yrcPath);
+        const res = await fetch(url);
+        if (res.ok) {
+          const text = await res.text();
+          if (text.trim()) {
+            const { parseNeteaseLyrics } = await import("./lyrics/netease");
+            lyrics = parseNeteaseLyrics(text);
+            if (lyrics.length === 0) {
+              lyrics = parseLyrics(text);
+            }
+            needsLyricsMatch = false;
+            console.log(`[Static] YRC/LRC: ${item.title} (${lyrics.length} lines)`);
           }
         }
       } catch { /* unavailable */ }
