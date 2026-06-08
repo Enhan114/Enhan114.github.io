@@ -36,20 +36,12 @@ public/music/*.ogg
 public/music/*.wav
 public/music/*.m4a
 public/music/*.aac
-public/music/*.png
-public/music/*.jpg
-public/music/*.jpeg
-public/music/*.webp
 docs/music/*.flac
 docs/music/*.mp3
 docs/music/*.ogg
 docs/music/*.wav
 docs/music/*.m4a
 docs/music/*.aac
-docs/music/*.png
-docs/music/*.jpg
-docs/music/*.jpeg
-docs/music/*.webp
-# Keep .lrc .ttml (lyrics), .gitkeep, and manifest
+# Keep .gitkeep and all lyrics/image files
 !public/music/.gitkeep
 !docs/music/.gitkeep
