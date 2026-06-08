@@ -56,7 +56,24 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
     let needsLyricsMatch = true;
     const { parseLyrics, isTtmlFormat } = await import("./lyrics");
 
-    if (item.ttmlPath) {
+    if (item.yrcPath) {
+      try {
+        const url = resolveAssetUrl(item.yrcPath);
+        const res = await fetch(url);
+        if (res.ok) {
+          const text = await res.text();
+          if (text.trim()) {
+            const { parseNeteaseLyrics } = await import("./lyrics/netease");
+            lyrics = parseNeteaseLyrics(text);
+            if (lyrics.length === 0) lyrics = parseLyrics(text);
+            needsLyricsMatch = false;
+            console.log(`[Static] YRC/LRC: ${item.title} (${lyrics.length} lines)`);
+          }
+        }
+      } catch { /* unavailable */ }
+    }
+
+    if (lyrics.length === 0 && item.ttmlPath) {
       try {
         const url = resolveAssetUrl(item.ttmlPath);
         const res = await fetch(url);
@@ -66,25 +83,6 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
             lyrics = parseLyrics(text);
             needsLyricsMatch = false;
             console.log(`[Static] TTML: ${item.title} (${lyrics.length} lines)`);
-          }
-        }
-      } catch { /* unavailable */ }
-    }
-
-    if (lyrics.length === 0 && item.yrcPath) {
-      try {
-        const url = resolveAssetUrl(item.yrcPath);
-        const res = await fetch(url);
-        if (res.ok) {
-          const text = await res.text();
-          if (text.trim()) {
-            const { parseNeteaseLyrics } = await import("./lyrics/netease");
-            lyrics = parseNeteaseLyrics(text);
-            if (lyrics.length === 0) {
-              lyrics = parseLyrics(text);
-            }
-            needsLyricsMatch = false;
-            console.log(`[Static] YRC/LRC: ${item.title} (${lyrics.length} lines)`);
           }
         }
       } catch { /* unavailable */ }

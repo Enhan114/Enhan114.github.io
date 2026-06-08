@@ -52,7 +52,30 @@ const main = async () => {
     }
     ids++;
 
-    // 2. AMLL TTML first (most accurate word-level timing)
+    // 2. API first: YRC > LRC
+    const data = await fetchJson(`${API}/lyric/new?id=${entry.neteaseId}`);
+    const yrcContent = data?.yrc?.lyric;
+    const lrcContent = data?.lrc?.lyric;
+    if (yrcContent && yrcContent.length > 30) {
+      writeFileSync(join(musicDir, yrcFile), yrcContent, "utf-8");
+      entry.yrcPath = `music/${yrcFile}`;
+      delete entry.lyricsPath; delete entry.ttmlPath;
+      yrc++;
+      console.log(`  📝 YRC`);
+      await sleep(400);
+      continue;
+    }
+    if (lrcContent && lrcContent.length > 30) {
+      writeFileSync(join(musicDir, yrcFile), lrcContent, "utf-8");
+      entry.yrcPath = `music/${yrcFile}`;
+      delete entry.lyricsPath; delete entry.ttmlPath;
+      yrc++;
+      console.log(`  📝 LRC (API)`);
+      await sleep(400);
+      continue;
+    }
+
+    // 3. AMLL TTML fallback
     if (!existsSync(join(musicDir, ttmlFile))) {
       const content = await fetchText(`${AMLL}/${entry.neteaseId}`);
       if (content && content.length > 30) {
@@ -63,27 +86,7 @@ const main = async () => {
       entry.ttmlPath = `music/${ttmlFile}`;
       delete entry.lyricsPath; delete entry.yrcPath;
       ttml++;
-      console.log(`  🎯 TTML`);
-      await sleep(400);
-      continue;
-    }
-
-    // 3. API fallback: YRC > LRC
-    const data = await fetchJson(`${API}/lyric/new?id=${entry.neteaseId}`);
-    const yrcContent = data?.yrc?.lyric;
-    const lrcContent = data?.lrc?.lyric;
-    if (yrcContent && yrcContent.length > 30) {
-      writeFileSync(join(musicDir, yrcFile), yrcContent, "utf-8");
-      entry.yrcPath = `music/${yrcFile}`;
-      delete entry.lyricsPath; delete entry.ttmlPath;
-      yrc++;
-      console.log(`  📝 YRC`);
-    } else if (lrcContent && lrcContent.length > 30) {
-      writeFileSync(join(musicDir, yrcFile), lrcContent, "utf-8");
-      entry.yrcPath = `music/${yrcFile}`;
-      delete entry.lyricsPath; delete entry.ttmlPath;
-      yrc++;
-      console.log(`  📝 LRC (API)`);
+      console.log(`  🎯 TTML (AMLL)`);
     } else {
       console.log(`  ⚠️  No lyrics`);
     }
