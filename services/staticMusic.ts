@@ -56,33 +56,16 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
     let needsLyricsMatch = true;
     const { parseLyrics, isTtmlFormat } = await import("./lyrics");
 
-    if (item.yrcPath) {
-      try {
-        const url = resolveAssetUrl(item.yrcPath);
-        const res = await fetch(url);
-        if (res.ok) {
-          const text = await res.text();
-          if (text.trim()) {
-            const { parseNeteaseLyrics } = await import("./lyrics/netease");
-            lyrics = parseNeteaseLyrics(text);
-            if (lyrics.length === 0) lyrics = parseLyrics(text);
-            needsLyricsMatch = false;
-            console.log(`[Static] YRC/LRC: ${item.title} (${lyrics.length} lines)`);
-          }
-        }
-      } catch { /* unavailable */ }
-    }
-
-    if (lyrics.length === 0 && item.ttmlPath) {
+    if (item.ttmlPath) {
       try {
         const url = resolveAssetUrl(item.ttmlPath);
         const res = await fetch(url);
         if (res.ok) {
           const text = await res.text();
-          if (text.trim() && isTtmlFormat(text)) {
-            lyrics = parseLyrics(text);
+          if (text.trim()) {
+            lyrics = parseLyrics(text); // auto-detects API JSON / AMLL TTML / NetEase YRC
             needsLyricsMatch = false;
-            console.log(`[Static] TTML: ${item.title} (${lyrics.length} lines)`);
+            console.log(`[Static] Lyrics: ${item.title} (${lyrics.length} lines)`);
           }
         }
       } catch { /* unavailable */ }
