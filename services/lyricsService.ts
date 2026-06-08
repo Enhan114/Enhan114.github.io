@@ -581,19 +581,19 @@ export const fetchLyricsById = async (
       return { lrc: rawLrc, yrc: rawYrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
     }
 
-    // 2. No YRC → try AMLL TTML for word-level timing
+    // 2. No YRC → try AMLL TTML
     try {
       const ttmlRes = await fetch(`${TTML_DB_BASE}/ncm/${songId}`);
       if (ttmlRes.ok) {
         const ttml = await ttmlRes.text();
         if (ttml.trim() && ttml.length > 30) {
           console.log(`[Lyrics] got AMLL TTML for ${songId}`);
-          return { ttml, lrc: rawLrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
+          return { ttml, metadata: [] };
         }
       }
     } catch { /* AMLL unreachable */ }
 
-    // 3. Fall back to LRC
+    // 3. Neither YRC nor AMLL → API LRC as last resort
     if (rawLrc) {
       console.log(`[Lyrics] got LRC for ${songId}`);
       return { lrc: rawLrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
