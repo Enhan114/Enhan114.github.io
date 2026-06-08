@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Song } from "../types";
+import { deleteAudioBlob } from "../services/audioCacheDB";
+import { audioResourceCache } from "../services/cache";
+import { bumpCacheVersion } from "../services/cacheVersion";
+import { deleteFromSWCache, deleteAllFromSWCache } from "../services/swCache";
 import {
   isPreloadDone, markPreloadDone, getPreloadableSongs, preloadAll,
   type PreloadProgress,
@@ -85,7 +89,6 @@ const SongItem: React.FC<SongItemProps> = ({ song, side, onAction, loading, stat
       {/* Action button */}
       <button
         onClick={() => onAction(song.id)}
-        disabled={loading}
         className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all
           ${side === "cached"
             ? "text-white/20 hover:text-red-400 hover:bg-red-400/10"
@@ -112,13 +115,17 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
   const [show, setShow] = useState(false);
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const loadingRef = React.useRef(false);
   const [progress, setProgress] = useState<PreloadProgress | null>(null);
   const [songState, setSongState] = useState<Map<string, {
     audio: string; lyrics: string;
     audioLoaded: number; audioTotal: number; audioSpeed: number;
   }>>(new Map());
+  const [checkingCache, setCheckingCache] = useState(true);
 
   // Split songs into cached / uncached
+  // KEY FIX: audio cache and lyrics cache are independent.
+  // A song is "cached" once its audio is cached — lyrics are a bonus.
   const allSongs = getPreloadableSongs(queue);
   const cachedIds = new Set<string>();
   const uncachedIds = new Set<string>();
@@ -126,23 +133,42 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
   for (const s of allSongs) {
     const st = songState.get(s.id);
     const audioDone = st?.audio === "done";
-    const lyricsDone = s.needsLyricsMatch === false || st?.lyrics === "done";
-    if (audioDone && lyricsDone) cachedIds.add(s.id);
+    if (audioDone) cachedIds.add(s.id);
     else uncachedIds.add(s.id);
   }
 
-  // First visit: pre-populate cached based on needsLyricsMatch
+  // Verify actual cache state from both IndexedDB AND Cache Storage.
+  // The "cached" list reflects what's really on disk, not just memory.
   useEffect(() => {
-    for (const s of allSongs) {
-      if (s.needsLyricsMatch === false) {
-        setSongState(prev => {
-          if (prev.has(s.id)) return prev;
-          const n = new Map(prev);
-          n.set(s.id, { audio: "done", lyrics: "done", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 });
-          return n;
-        });
-      }
-    }
+    if (allSongs.length === 0) { setCheckingCache(false); return; }
+    setCheckingCache(true);
+    const urls = allSongs.map(s => s.fileUrl);
+
+    const checkCacheStorage = async (): Promise<Set<string>> => {
+      try {
+        const cache = await caches.open("aura-audio-http");
+        const keys = await cache.keys();
+        return new Set(keys.map(r => r.url));
+      } catch { return new Set(); }
+    };
+
+    Promise.all([
+      import("../services/audioCacheDB").then(m => m.batchHasAudioBlobs(urls)).catch(() => new Set<string>()),
+      checkCacheStorage(),
+    ]).then(([indexedDBFound, cacheStorageFound]) => {
+      allSongs.forEach((s) => {
+        // Song is cached if found in EITHER IndexedDB or Cache Storage
+        if (indexedDBFound.has(s.fileUrl) || cacheStorageFound.has(s.fileUrl)) {
+          setSongState(prev => {
+            if (prev.get(s.id)?.audio === "done") return prev;
+            const n = new Map(prev);
+            const cur = n.get(s.id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 };
+            n.set(s.id, { ...cur, audio: "done" });
+            return n;
+          });
+        }
+      });
+    }).catch(() => {}).finally(() => setCheckingCache(false));
   }, [queue.length]);
 
   // Open logic
@@ -174,11 +200,12 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
 
   const downloadBatch = async (ids: string[]) => {
     setLoading(true);
+    loadingRef.current = true;
     const toLoad = allSongs.filter(s => ids.includes(s.id));
     await preloadAll(
       toLoad,
-      (p) => setProgress({ ...p }),
-      (id, type, status, fp) => {
+      (p) => { setProgress({ ...p }); },
+      (id, type, status, fp, lyricsData) => {
         setSongState(prev => {
           const n = new Map(prev);
           const cur = n.get(id) || { audio: "", lyrics: "", audioLoaded: 0, audioTotal: 0, audioSpeed: 0 };
@@ -187,9 +214,13 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
           n.set(id, entry);
           return n;
         });
+        if (lyricsData && lyricsData.length > 0) {
+          onLyricsReady(id, lyricsData);
+        }
       },
     );
     setLoading(false);
+    loadingRef.current = false;
   };
 
   const deleteCached = (id: string) => {
@@ -198,13 +229,38 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
       n.delete(id);
       return n;
     });
-    // Also clear the lyrics flag so the song goes back to uncached
-    onLyricsReady(id, []);
+    const song = allSongs.find(s => s.id === id);
+    if (song) {
+      onLyricsReady(id, []); // reset lyrics flag
+      audioResourceCache.delete(song.fileUrl); // in-memory LRU
+      deleteAudioBlob(song.fileUrl).catch((e) => {
+        console.warn(`[CacheDB] delete failed for ${song.title}:`, e);
+      });
+      deleteFromSWCache(song.fileUrl); // Service Worker Cache Storage
+      bumpCacheVersion(); // bust browser HTTP cache too
+    }
   };
 
-  const deleteAllCached = () => {
-    for (const id of cachedIds) {
-      deleteCached(id);
+  const deleteAllCached = async () => {
+    // Collect all songs to delete first (before state changes cause re-render)
+    const toDelete = allSongs.filter(s => cachedIds.has(s.id));
+    // Update state once — remove all
+    setSongState(prev => {
+      const n = new Map(prev);
+      for (const id of cachedIds) n.delete(id);
+      return n;
+    });
+    // Delete from all backends in parallel
+    for (const song of toDelete) {
+      onLyricsReady(song.id, []);
+      audioResourceCache.delete(song.fileUrl);
+      deleteAudioBlob(song.fileUrl).catch((e) => {
+        console.warn(`[CacheDB] delete failed for ${song.title}:`, e);
+      });
+    }
+    if (toDelete.length > 0) {
+      deleteAllFromSWCache(); // Service Worker Cache Storage
+      bumpCacheVersion(); // bust browser HTTP cache too
     }
   };
 
@@ -217,7 +273,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
     <div className="fixed inset-0 z-[10001] flex items-center justify-center px-4 select-none font-sans">
       <div
         className={`absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}
-        onClick={loading ? undefined : close}
+        onClick={close}
       />
       <div
         className={`relative w-full max-w-2xl max-h-[80vh] flex flex-col bg-black/50 backdrop-blur-3xl saturate-150 border border-white/10 rounded-[28px] shadow-[0_30px_80px_rgba(0,0,0,0.5)] text-white transition-all duration-300 ${visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-4"}`}
@@ -231,8 +287,8 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
                 {loading ? "下载中..." : "左侧已缓存 · 右侧待下载 · 实时同步"}
               </p>
             </div>
-            <button onClick={close} disabled={loading}
-              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center disabled:opacity-20">
+            <button onClick={close}
+              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center">
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path d="M1 1L11 11M1 11L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
               </svg>
@@ -257,7 +313,9 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
           {/* Left: Cached */}
           <div className="flex-1 flex flex-col min-w-0 rounded-2xl bg-white/[0.03] border border-white/5 overflow-hidden">
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-white/5">
-              <span className="text-xs font-semibold text-white/50">已缓存 ({cachedList.length})</span>
+              <span className="text-xs font-semibold text-white/50">
+                已缓存 ({checkingCache ? "..." : cachedList.length})
+              </span>
               {cachedList.length > 0 && (
                 <button onClick={deleteAllCached} disabled={loading}
                   className="text-[10px] text-red-400/50 hover:text-red-400 transition-colors">
@@ -268,7 +326,7 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
             <div className="flex-1 overflow-y-auto playlist-scrollbar px-2 py-1">
               {cachedList.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-[11px] text-white/15 italic">
-                  暂无缓存
+                  {checkingCache ? "检查中..." : "暂无缓存"}
                 </div>
               ) : (
                 cachedList.map(s => (
@@ -307,8 +365,8 @@ const PreloadDialog: React.FC<PreloadDialogProps> = ({ queue, onLyricsReady, for
 
         {/* Footer */}
         <div className="shrink-0 p-4 pt-1 flex items-center justify-center">
-          <button onClick={close} disabled={loading}
-            className="py-2 px-6 text-xs text-white/25 hover:text-white/40 transition-colors disabled:opacity-10">
+          <button onClick={close}
+            className="py-2 px-6 text-xs text-white/25 hover:text-white/40 transition-colors">
             关闭
           </button>
         </div>

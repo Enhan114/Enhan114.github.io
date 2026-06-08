@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:static": "bun run build",
+    "fetch-ids": "node scripts/fetchNeteaseIds.mjs",
+    "build:full": "node scripts/fetchNeteaseIds.mjs && vite build",
     "preview": "vite preview",
     "test": "bun test tests"
   },

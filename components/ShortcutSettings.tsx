@@ -24,6 +24,7 @@ interface ShortcutSettingsProps {
   onBindingsChanged: (bindings: ShortcutBinding[]) => void;
   onUnblock?: (songs: BlockedSongInfo[]) => void;
   onOpenCacheManager?: () => void;
+  onOpenIdManager?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,7 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
   onBindingsChanged,
   onUnblock,
   onOpenCacheManager,
+  onOpenIdManager,
 }) => {
   const [bindings, setBindings] = useState<ShortcutBinding[]>(() => loadBindings());
   const [recording, setRecording] = useState<ShortcutAction | null>(null);
@@ -379,10 +381,21 @@ const ShortcutSettings: React.FC<ShortcutSettingsProps> = ({
                   缓存管理
                 </button>
               )}
+              {onOpenIdManager && (
+                <button onClick={onOpenIdManager} className="text-xs text-white/40 hover:text-white/70 transition-colors px-2 py-1">
+                  ID管理
+                </button>
+              )}
               <button
                 onClick={() => {
                   if (confirm("确定清除所有缓存？\n\n包括屏蔽列表、歌词数据、快捷键设置。\n页面将自动刷新。")) {
                     window.localStorage.clear();
+                    // Clear audio cache IndexedDB
+                    indexedDB.deleteDatabase("aura-audio-cache");
+                    // Clear Service Worker Cache Storage
+                    if ("caches" in window) {
+                      caches.delete("aura-audio-http").catch(() => {});
+                    }
                     try {
                       const delReq = indexedDB.deleteDatabase("aura-music");
                       delReq.onsuccess = () => window.location.reload();

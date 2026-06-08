@@ -879,26 +879,38 @@ export const usePlayer = ({
       };
     }
 
-    // Check cache first
-    const cachedBlob = audioResourceCache.get(fileUrl);
-    if (cachedBlob) {
-      releaseObjectUrl();
-      currentObjectUrl = URL.createObjectURL(cachedBlob);
-      setResolvedAudioSrc(currentObjectUrl);
-      setIsBuffering(false);
-      setBufferProgress(1);
-      return () => {
-        canceled = true;
-        releaseObjectUrl();
-      };
-    }
+    // Resolve audio source: in-memory → IndexedDB → network
+    (async () => {
+      let blob = audioResourceCache.get(fileUrl) ?? null;
 
-    // Use the original URL directly - let browser handle native buffering
-    // This is the most reliable approach and works for any file size
-    releaseObjectUrl();
-    setResolvedAudioSrc(null); // Use original fileUrl via fallback in audio element
-    setIsBuffering(true);
-    setBufferProgress(0);
+      if (!blob) {
+        try {
+          const { loadAudioBlob } = await import("../services/audioCacheDB");
+          const persisted = await loadAudioBlob(fileUrl);
+          if (persisted) {
+            audioResourceCache.set(fileUrl, persisted);
+            blob = persisted;
+          }
+        } catch { /* unavailable */ }
+      }
+
+      if (canceled) return;
+
+      if (blob) {
+        releaseObjectUrl();
+        currentObjectUrl = URL.createObjectURL(blob);
+        setResolvedAudioSrc(currentObjectUrl);
+        setIsBuffering(false);
+        setBufferProgress(1);
+        return;
+      }
+
+      // Network fallback
+      releaseObjectUrl();
+      setResolvedAudioSrc(null);
+      setIsBuffering(true);
+      setBufferProgress(0);
+    })();
 
     // Download in background for caching (does not affect playback)
     const cacheInBackground = async () => {
@@ -917,6 +929,7 @@ export const usePlayer = ({
           const fallbackBlob = await response.blob();
           if (canceled) return;
           audioResourceCache.set(fileUrl, fallbackBlob);
+          try { const { saveAudioBlob } = await import("../services/audioCacheDB"); await saveAudioBlob(fileUrl, fallbackBlob); } catch {}
           setBufferProgress(1);
           // Don't switch - will be used next time
           return;
@@ -949,6 +962,8 @@ export const usePlayer = ({
           type: response.headers.get("content-type") || "audio/mpeg",
         });
         audioResourceCache.set(fileUrl, blob);
+        // Persist to IndexedDB so cache survives refresh
+        try { const { saveAudioBlob } = await import("../services/audioCacheDB"); await saveAudioBlob(fileUrl, blob); } catch {}
         setBufferProgress(1);
         // Don't switch to blob URL during playback - it would restart the audio
         // The cached blob will be used automatically next time this song is played

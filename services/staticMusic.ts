@@ -7,7 +7,10 @@ interface ManifestEntry {
   artist: string;
   filePath: string;
   lyricsPath?: string;
+  ttmlPath?: string;
+  yrcPath?: string;
   coverPath?: string;
+  neteaseId?: string;
 }
 
 const baseUrl = import.meta.env.BASE_URL ?? "/";
@@ -48,9 +51,43 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       }
     }
 
-    // Always use cloud matching (NetEase → TTML / YRC).  Cloud data has
-    // per-word timing (逐字时间) that local LRC files lack.  Lyrics are
-    // cached to IndexedDB after first match so subsequent plays are instant.
+    // Load word-level lyrics — TTML (AMLL) or YRC (NetEase API)
+    let lyrics: import("../types").LyricLine[] = [];
+    let needsLyricsMatch = true;
+    const { parseLyrics, isTtmlFormat } = await import("./lyrics");
+
+    if (item.yrcPath) {
+      try {
+        const url = resolveAssetUrl(item.yrcPath);
+        const res = await fetch(url);
+        if (res.ok) {
+          const text = await res.text();
+          if (text.trim()) {
+            const { parseNeteaseLyrics } = await import("./lyrics/netease");
+            lyrics = parseNeteaseLyrics(text);
+            needsLyricsMatch = false;
+            console.log(`[Static] YRC: ${item.title} (${lyrics.length} lines)`);
+          }
+        }
+      } catch { /* unavailable */ }
+    }
+
+    if (lyrics.length === 0 && item.ttmlPath) {
+      try {
+        const url = resolveAssetUrl(item.ttmlPath);
+        const res = await fetch(url);
+        if (res.ok) {
+          const text = await res.text();
+          if (text.trim() && isTtmlFormat(text)) {
+            lyrics = parseLyrics(text);
+            needsLyricsMatch = false;
+            console.log(`[Static] TTML: ${item.title} (${lyrics.length} lines)`);
+          }
+        }
+      } catch { /* unavailable */ }
+    }
+
+    const hasNeteaseId = item.neteaseId && item.neteaseId.trim().length > 0;
     songs.push({
       id: item.id,
       title: item.title,
@@ -59,8 +96,10 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       origin: fileUrl,
       source: "remote",
       coverUrl,
-      lyrics: [],
-      needsLyricsMatch: true,
+      lyrics,
+      needsLyricsMatch,
+      isNetease: hasNeteaseId || undefined,
+      neteaseId: hasNeteaseId ? item.neteaseId : undefined,
       colors: colors.length > 0 ? colors : [],
     });
   }

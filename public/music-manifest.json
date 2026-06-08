@@ -36,7 +36,6 @@
   },
   {
     "filePath": "music/Athletics - III.flac",
-    "lyricsPath": "music/Athletics - III.lrc",
     "coverPath": "music/Athletics - III.cover.png",
     "title": "III",
     "artist": "Athletics",
@@ -76,13 +75,6 @@
     "title": "Mine (Illenium Remix)",
     "artist": "ILLENIUM,Phoebe Ryan",
     "id": "static-ILLENIUM-Phoebe-Ryan---Mine--Illenium-Remix--flac"
-  },
-  {
-    "filePath": "music/June - 4 Days.flac",
-    "coverPath": "music/June - 4 Days.cover.jpg",
-    "title": "4 Days",
-    "artist": "June",
-    "id": "static-June---4-Days-flac"
   },
   {
     "filePath": "music/Lindsey Stirling,Mako - Lose You Now.flac",
@@ -128,7 +120,6 @@
   },
   {
     "filePath": "music/MGD,MXZHPHXNK - Sinos De Natal.flac",
-    "lyricsPath": "music/MGD,MXZHPHXNK - Sinos De Natal.lrc",
     "coverPath": "music/MGD,MXZHPHXNK - Sinos De Natal.cover.jpg",
     "title": "Sinos De Natal",
     "artist": "MGD,MXZHPHXNK",
@@ -189,13 +180,6 @@
     "title": "Something Just Like This",
     "artist": "The Chainsmokers,Coldplay",
     "id": "static-The-Chainsmokers-Coldplay---Something-Just-Like-This-flac"
-  },
-  {
-    "filePath": "music/Toby Fox - Undertale.flac",
-    "coverPath": "music/Toby Fox - Undertale.cover.jpg",
-    "title": "Undertale",
-    "artist": "Toby Fox",
-    "id": "static-Toby-Fox---Undertale-flac"
   },
   {
     "filePath": "music/Twinbed - Trouble I'm In.flac",

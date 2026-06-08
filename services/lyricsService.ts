@@ -1,11 +1,7 @@
 import { fetchViaProxy } from "./utils";
 import { isMetadataLine } from "./lyrics/types";
 
-const LYRIC_API_BASE = "https://zm.wwoyun.cn";
-const METING_API = "https://api.qijieya.cn/meting/";
-const NETEASE_SEARCH_API = "https://zm.wwoyun.cn/cloudsearch";
-const NETEASE_API_BASE = "http://music.163.com/api";
-const NETEASECLOUD_API_BASE = "https://zm.wwoyun.cn";
+const NETEASE_API = "https://music-api.cc.cd";
 const TTML_DB_BASE = "https://amll-ttml-db.stevexmh.net";
 
 const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)$/;
@@ -343,50 +339,128 @@ export const getNeteaseAudioUrl = (id: string) => {
   return `${METING_API}?type=url&id=${id}`;
 };
 
-const fetchTtmlByNeteaseId = async (id: string): Promise<string | null> => {
-  const url = `${TTML_DB_BASE}/ncm/${encodeURIComponent(id)}`;
-
+/**
+ * Fetch lyrics from AMLL TTML DB via Service Worker proxy.
+ * The SW proxies /api/amll/ncm/:id → amll-ttml-db.stevexmh.net/ncm/:id
+ * This server returns TTML (word-timed) for some songs, LRC for others.
+ * Highest priority — no CORS, same origin, word-level timing when available.
+ */
+const fetchAmllLyrics = async (id: string): Promise<string | null> => {
+  const proxyPath = `/api/amll/ncm/${encodeURIComponent(id)}`;
   try {
-    const res = await fetch(url);
+    const res = await fetch(proxyPath);
     if (!res.ok) {
-      if (res.status !== 404) {
-        console.warn("TTML lyrics fetch failed", res.status, id);
-      }
+      if (res.status !== 404) console.warn("[AMLL] fetch failed", res.status, id);
       return null;
     }
-
     const text = await res.text();
-    const trimmed = text.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  } catch (err) {
-    console.error("TTML lyrics request error", err);
+    if (!text.trim()) return null;
+    // Check if it's TTML (XML) or LRC (plain text) by looking at first char
+    console.log(`[AMLL] got lyrics for ${id} (${text.trim().startsWith("<?xml") ? "TTML" : "LRC"}, ${text.length} chars)`);
+    return text;
+  } catch (e) {
+    console.warn("[AMLL] proxy fetch failed:", (e as Error).message);
     return null;
   }
 };
 
-// Implements the search logic from the user provided code snippet
+// ── LRCLIB: open-source lyrics database ──
+interface LrclibTrack {
+  id: number;
+  name: string;
+  artistName: string;
+  albumName?: string;
+  duration?: number;
+  plainLyrics?: string;
+  syncedLyrics?: string;
+}
+
+const searchLrclib = async (title: string, artist: string): Promise<LrclibTrack[]> => {
+  const q = encodeURIComponent(`${artist} ${title}`.trim());
+  try {
+    const res = await fetch(`${LRCLIB_BASE}/search?q=${q}`);
+    if (!res.ok) return [];
+    return (await res.json()) as LrclibTrack[];
+  } catch {
+    return [];
+  }
+};
+
+const fetchLrclibById = async (id: number): Promise<LrclibTrack | null> => {
+  try {
+    const res = await fetch(`${LRCLIB_BASE}/get/${id}`);
+    if (!res.ok) return null;
+    return (await res.json()) as LrclibTrack;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Try LRCLIB as a third lyrics source.
+ * Returns a MatchedLyricsResult-compatible object, or null.
+ */
+const tryLrclib = async (
+  title: string,
+  artist: string,
+  durationSec?: number,
+): Promise<MatchedLyricsResult | null> => {
+  try {
+    const tracks = await searchLrclib(title, artist);
+    if (tracks.length === 0) return null;
+
+    // Pick best match: prefer duration-matched, then first result
+    let best = tracks[0];
+    if (durationSec && durationSec > 0) {
+      let bestDiff = Infinity;
+      for (const t of tracks) {
+        if (!t.duration || t.duration <= 0) continue;
+        const diff = Math.abs(t.duration - durationSec);
+        if (diff < bestDiff) { bestDiff = diff; best = t; }
+      }
+      if (!Number.isFinite(bestDiff) || bestDiff > 15) best = tracks[0];
+    }
+
+    // Need full lyrics — fetch by ID
+    const full = await fetchLrclibById(best.id);
+    if (!full || (!full.syncedLyrics && !full.plainLyrics)) return null;
+
+    console.log(`[LRCLIB] lyrics found: ${full.name} by ${full.artistName}`);
+
+    const lrcContent = full.syncedLyrics ?? full.plainLyrics ?? "";
+    return {
+      lrc: lrcContent,
+      yrc: undefined,
+      tLrc: undefined,
+      ttml: undefined,
+      metadata: [],
+      matchedArtist: full.artistName,
+      matchedTitle: full.name,
+      matchedAlbum: full.albumName,
+    };
+  } catch (e) {
+    console.warn("[LRCLIB] search/fetch failed:", e);
+    return null;
+  }
+};
+
+/**
+ * Search NetEase via multiple proxy fallbacks.
+ * We need the NetEase song ID to fetch TTML and other lyrics.
+ */
 export const searchNetEase = async (
   keyword: string,
   options: SearchOptions = {},
 ): Promise<NeteaseTrackInfo[]> => {
   const { limit = 20, offset = 0 } = options;
-  const searchApiUrl = `${NETEASE_SEARCH_API}?keywords=${encodeURIComponent(
-    keyword,
-  )}&limit=${limit}&offset=${offset}`;
-
+  const url = `${NETEASE_API}/search?keywords=${encodeURIComponent(keyword)}&type=1&limit=${limit}&offset=${offset}`;
   try {
-    const parsedSearchApiResponse = (await fetchViaProxy(
-      searchApiUrl,
-    )) as NeteaseSearchResponse;
-    const songs = parsedSearchApiResponse.result?.songs ?? [];
-
-    if (songs.length === 0) {
-      return [];
-    }
-
-    return songs.map(mapNeteaseSongToTrack);
-  } catch (error) {
-    console.error("NetEase search error", error);
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data?.result?.songs ?? []).map(mapNeteaseSongToTrack);
+  } catch (err) {
+    console.warn("[NetEase] search failed:", (err as Error).message);
     return [];
   }
 };
@@ -403,8 +477,10 @@ export const fetchNeteasePlaylist = async (
     let shouldContinue = true;
 
     while (shouldContinue) {
-      const url = `${NETEASECLOUD_API_BASE}/playlist/track/all?id=${playlistId}&limit=${limit}&offset=${offset}`;
-      const data = (await fetchViaProxy(url)) as NeteasePlaylistResponse;
+      const url = `${NETEASE_API}/playlist/track/all?id=${playlistId}&limit=${limit}&offset=${offset}`;
+      const res = await fetch(url);
+      if (!res.ok) break;
+      const data = (await res.json()) as NeteasePlaylistResponse;
       const songs = data.songs ?? [];
       if (songs.length === 0) {
         break;
@@ -433,8 +509,10 @@ export const fetchNeteaseSong = async (
   songId: string,
 ): Promise<NeteaseTrackInfo | null> => {
   try {
-    const url = `${NETEASECLOUD_API_BASE}/song/detail?ids=${songId}`;
-    const data = (await fetchViaProxy(url)) as NeteaseSongDetailResponse;
+    const url = `${NETEASE_API}/song/detail?ids=${songId}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = (await res.json()) as NeteaseSongDetailResponse;
     const track = data.songs?.[0];
     if (data.code === 200 && track) {
       return mapNeteaseSongToTrack(track);
@@ -454,53 +532,31 @@ export const searchAndMatchLyrics = async (
 ): Promise<MatchedLyricsResult | null> => {
   try {
     const songs = await searchNetEase(`${title} ${artist}`, { limit: 10 });
-
     if (songs.length === 0) {
-      console.warn("No songs found on Cloud");
+      console.warn("[Lyrics] No cloud results");
       return null;
     }
 
-    // If we know the local file's duration, pick the NetEase result whose
-    // duration is closest.  This avoids matching a live/remix/alternate
-    // recording whose TTML timing would be out of sync with the local audio.
     let bestSong = songs[0];
     if (durationSec && durationSec > 0) {
       let bestDiff = Infinity;
       for (const s of songs) {
-        // NetEase dt is in milliseconds
         const neteaseSec = (s.duration ?? 0) / 1000;
         if (neteaseSec <= 0) continue;
         const diff = Math.abs(neteaseSec - durationSec);
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          bestSong = s;
-        }
-      }
-      if (Number.isFinite(bestDiff) && bestDiff < 15) {
-        // Only use duration-matched result if it's within 15 seconds
-        console.log(
-          `Duration-matched: ${bestSong.title} (${((bestSong.duration ?? 0) / 1000).toFixed(0)}s ≈ ${durationSec.toFixed(0)}s, diff ${bestDiff.toFixed(1)}s)`,
-        );
-      } else {
-        // No close duration match — fall back to first search result
-        console.log(
-          `Duration match too far (best diff ${Number.isFinite(bestDiff) ? bestDiff.toFixed(1) : "∞"}s), falling back to first result`,
-        );
-        bestSong = songs[0];
+        if (diff < bestDiff) { bestDiff = diff; bestSong = s; }
       }
     }
 
-    const songId = bestSong.id;
-    console.log(`Matched Song ID: ${songId} — ${bestSong.title}`);
-
-    const lyricsResult = await fetchLyricsById(songId);
-    if (lyricsResult) {
-      lyricsResult.matchedArtist = bestSong.artist;
-      lyricsResult.matchedTitle = bestSong.title;
-      lyricsResult.matchedAlbum = bestSong.album;
-      lyricsResult.matchedNeteaseId = bestSong.id;
+    console.log(`Matched Song ID: ${bestSong.id} — ${bestSong.title}`);
+    const lyrics = await fetchLyricsById(bestSong.id);
+    if (lyrics) {
+      lyrics.matchedArtist = bestSong.artist;
+      lyrics.matchedTitle = bestSong.title;
+      lyrics.matchedAlbum = bestSong.album;
+      lyrics.matchedNeteaseId = bestSong.id;
     }
-    return lyricsResult;
+    return lyrics;
   } catch (error) {
     console.error("Cloud lyrics match failed:", error);
     return null;
@@ -511,73 +567,23 @@ export const fetchLyricsById = async (
   songId: string,
 ): Promise<MatchedLyricsResult | null> => {
   try {
-    // Fetch TTML and NetEase lyrics in parallel
-    const [ttmlContent, lyricDataResult] = await Promise.all([
-      fetchTtmlByNeteaseId(songId),
-      (async () => {
-        const lyricUrl = `${NETEASECLOUD_API_BASE}/lyric/new?id=${songId}`;
-        try {
-          return await fetchViaProxy(lyricUrl);
-        } catch (err) {
-          console.error("Lyric fetch error", err);
-          return null;
-        }
-      })(),
-    ]);
-
-    const lyricData = lyricDataResult as any;
-
-    const rawYrc: string | undefined = lyricData?.yrc?.lyric;
-    const rawLrc: string | undefined = lyricData?.lrc?.lyric;
-    const rawTLrc: string | undefined = lyricData?.tlyric?.lyric;
-    const rawYtl: string | undefined = lyricData?.ytlrc?.lyric;
-
-    const lrcMeta = rawLrc
-      ? extractMetadataLines(rawLrc)
-      : { clean: undefined, metadata: [] };
-    const yrcMeta = rawYrc
-      ? extractMetadataLines(rawYrc)
-      : { clean: undefined, metadata: [] };
-
-    const rawTranslation = rawTLrc?.trim() ? rawTLrc : rawYtl;
-
-    let cleanTranslation: string | undefined;
-    let translationMetadata: string[] = [];
-    if (rawTranslation) {
-      const result = extractMetadataLines(rawTranslation);
-      cleanTranslation = result.clean;
-      translationMetadata = result.metadata;
-    }
-
-    const ttmlMetadata = extractTtmlMetadata(ttmlContent ?? undefined);
-
-    const metadata = mergeMetadata({
-      lrc: lrcMeta.metadata,
-      yrc: yrcMeta.metadata,
-      translation: translationMetadata,
-      ttml: ttmlMetadata,
-      lyricUser: lyricData?.lyricUser?.nickname,
-      transUser: lyricData?.transUser?.nickname,
-    });
-
-    const baseLyrics = lrcMeta.clean || yrcMeta.clean || rawLrc || rawYrc;
-
-    if (!ttmlContent && !baseLyrics) {
-      return null;
-    }
-
-    const yrcForEnrichment =
-      yrcMeta.clean && lrcMeta.clean ? yrcMeta.clean : undefined;
-
+    // /lyric/new returns yrc (word-level timing), lrc, tlyric (translation)
+    const url = `${NETEASE_API}/lyric/new?id=${encodeURIComponent(songId)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const rawYrc: string | undefined = data?.yrc?.lyric;
+    const rawLrc: string | undefined = data?.lrc?.lyric;
+    const rawTLrc: string | undefined = data?.tlyric?.lyric;
+    if (!rawYrc && !rawLrc) return null;
+    console.log(`[Lyrics] got ${rawYrc ? 'YRC' : 'LRC'} for ${songId} (${(rawYrc||rawLrc||'').length} chars)`);
     return {
-      lrc: baseLyrics,
-      yrc: yrcForEnrichment,
-      tLrc: cleanTranslation,
-      ttml: ttmlContent ?? undefined,
-      metadata,
+      lrc: rawLrc,
+      yrc: rawYrc,
+      tLrc: rawTLrc?.trim() || undefined,
+      metadata: [],
     };
-  } catch (e) {
-    console.error("Lyric fetch pipeline error", e);
+  } catch {
     return null;
   }
 };

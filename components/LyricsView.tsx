@@ -771,14 +771,11 @@ const LyricsView: React.FC<LyricsViewProps> = ({
     >
       <canvas ref={canvasRef} className="w-full h-full block" />
       {!lyrics.length && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-white/40 select-none pointer-events-none">
+        <div className="absolute inset-0 flex items-center justify-center text-white/20 select-none pointer-events-none">
           {matchStatus === "matching" ? (
             <div className="animate-pulse">{dict.lyrics.syncing}</div>
           ) : (
-            <>
-              <div className="text-4xl mb-4 opacity-50">♪</div>
-              <div>{dict.lyrics.empty}</div>
-            </>
+            <div className="text-4xl opacity-30">♪</div>
           )}
         </div>
       )}

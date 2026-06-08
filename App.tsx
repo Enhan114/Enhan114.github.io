@@ -7,19 +7,27 @@ import LyricsView from "./components/LyricsView";
 import PlaylistPanel from "./components/PlaylistPanel";
 import KeyboardShortcuts from "./components/KeyboardShortcuts";
 import ShortcutSettings from "./components/ShortcutSettings";
+import IdManager from "./components/IdManager";
 import WelcomeDialog from "./components/WelcomeDialog";
 import PreloadDialog from "./components/PreloadDialog";
 import TopBar from "./components/TopBar";
 import SearchModal from "./components/SearchModal";
 import { ShortcutBinding, loadBindings } from "./services/shortcutSettings";
+import { getCacheBustedUrl } from "./services/cacheVersion";
+import { registerSW } from "./services/swCache";
 import { usePlaylist } from "./hooks/usePlaylist";
 import { usePlayer } from "./hooks/usePlayer";
 import { useI18n } from "./hooks/useI18n";
 import { keyboardRegistry } from "./services/keyboardRegistry";
 import { loadStaticSongs } from "./services/staticMusic";
+import { loadAudioBlob } from "./services/audioCacheDB";
+import { audioResourceCache } from "./services/cache";
 import MediaSessionController from "./components/MediaSessionController";
 
 const App: React.FC = () => {
+  // Register Service Worker for cache-controlled audio serving
+  useEffect(() => { registerSW(); }, []);
+
   const { toast } = useToast();
   const { dict } = useI18n();
   const playlist = usePlaylist();
@@ -60,6 +68,7 @@ const App: React.FC = () => {
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showShortcutSettings, setShowShortcutSettings] = useState(false);
+  const [showIdManager, setShowIdManager] = useState(false);
   const [forceShowCacheManager, setForceShowCacheManager] = useState(false);
   const [showVolumePopup, setShowVolumePopup] = useState(false);
   const [showSettingsPopup, setShowSettingsPopup] = useState(false);
@@ -135,6 +144,20 @@ const App: React.FC = () => {
   }, []);
 
   // Search shortcut is now handled by KeyboardShortcuts via custom bindings
+
+  // Pre-fill in-memory audio cache from IndexedDB on startup,
+  // BEFORE any song plays.  This eliminates the async delay:
+  // by the time the user clicks a song, the blob is already in
+  // the in-memory LRU and plays instantly — no IndexedDB await.
+  useEffect(() => {
+    if (!playlist.isReady || playlist.queue.length === 0) return;
+    for (const song of playlist.queue) {
+      if (!song.fileUrl || song.fileUrl.startsWith("blob:")) continue;
+      loadAudioBlob(song.fileUrl).then((blob) => {
+        if (blob) audioResourceCache.set(song.fileUrl, blob);
+      }).catch(() => {});
+    }
+  }, [playlist.isReady, playlist.queue.length]);
 
   const [hasLoadedStaticMusic, setHasLoadedStaticMusic] = useState(false);
   const staticMusicLoadedRef = useRef(false);
@@ -365,7 +388,7 @@ const App: React.FC = () => {
 
       <audio
         ref={audioRef}
-        src={resolvedAudioSrc ?? currentSong?.fileUrl}
+        src={resolvedAudioSrc ?? getCacheBustedUrl(currentSong?.fileUrl ?? "")}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleAudioEnded}
@@ -433,6 +456,24 @@ const App: React.FC = () => {
         onOpenCacheManager={() => {
           setShowShortcutSettings(false);
           setTimeout(() => setForceShowCacheManager(true), 100);
+        }}
+        onOpenIdManager={() => {
+          setShowShortcutSettings(false);
+          setTimeout(() => setShowIdManager(true), 100);
+        }}
+      />
+
+      <IdManager
+        isOpen={showIdManager}
+        onClose={() => setShowIdManager(false)}
+        queue={playlist.queue}
+        onIdChanged={(songId, newNeteaseId, newLyrics) => {
+          playlist.updateSongInQueue(songId, {
+            neteaseId: newNeteaseId,
+            isNetease: true,
+            lyrics: newLyrics,
+            needsLyricsMatch: false,
+          });
         }}
       />
 
