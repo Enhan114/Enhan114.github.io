@@ -566,40 +566,37 @@ export const searchAndMatchLyrics = async (
 export const fetchLyricsById = async (
   songId: string,
 ): Promise<MatchedLyricsResult | null> => {
+  // 1. API /lyric/new — always preferred, any lyrics format counts
   try {
-    // 1. API /lyric/new — try YRC (word-level) first
     const url = `${NETEASE_API}/lyric/new?id=${encodeURIComponent(songId)}`;
     const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const rawYrc: string | undefined = data?.yrc?.lyric;
-    const rawLrc: string | undefined = data?.lrc?.lyric;
-    const rawTLrc: string | undefined = data?.tlyric?.lyric;
-
-    if (rawYrc) {
-      console.log(`[Lyrics] got YRC for ${songId}`);
-      return { lrc: rawLrc, yrc: rawYrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
-    }
-
-    // 2. No YRC → API LRC (still from user's API)
-    if (rawLrc) {
-      console.log(`[Lyrics] got LRC for ${songId}`);
-      return { lrc: rawLrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
-    }
-
-    // 3. API has nothing → AMLL TTML as last resort
-    try {
-      const ttmlRes = await fetch(`${TTML_DB_BASE}/ncm/${songId}`);
-      if (ttmlRes.ok) {
-        const ttml = await ttmlRes.text();
-        if (ttml.trim() && ttml.length > 30) {
-          console.log(`[Lyrics] got AMLL TTML for ${songId}`);
-          return { ttml, metadata: [] };
-        }
+    if (res.ok) {
+      const data = await res.json();
+      const rawYrc: string | undefined = data?.yrc?.lyric;
+      const rawLrc: string | undefined = data?.lrc?.lyric;
+      const rawTLrc: string | undefined = data?.tlyric?.lyric;
+      if (rawYrc || rawLrc || rawTLrc) {
+        console.log(`[Lyrics] got ${rawYrc ? 'YRC' : rawLrc ? 'LRC' : 'tlyric'} for ${songId} (API)`);
+        return { lrc: rawLrc, yrc: rawYrc, tLrc: rawTLrc?.trim() || undefined, metadata: [] };
       }
-    } catch { /* AMLL unreachable */ }
+    }
+    // API reachable but no lyrics for this song — don't fall back
     return null;
   } catch {
-    return null;
+    // API unreachable → fall through to AMLL
   }
+
+  // 2. AMLL TTML — only when API is unreachable
+  try {
+    const ttmlRes = await fetch(`${TTML_DB_BASE}/ncm/${songId}`);
+    if (ttmlRes.ok) {
+      const ttml = await ttmlRes.text();
+      if (ttml.trim() && ttml.length > 30) {
+        console.log(`[Lyrics] got AMLL TTML for ${songId}`);
+        return { ttml, metadata: [] };
+      }
+    }
+  } catch { /* also unreachable */ }
+
+  return null;
 };
