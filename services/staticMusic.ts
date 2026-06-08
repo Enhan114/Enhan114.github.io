@@ -61,9 +61,29 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
         const url = resolveAssetUrl(item.ttmlPath);
         const res = await fetch(url);
         if (res.ok) {
-          const text = await res.text();
-          if (text.trim()) {
-            lyrics = parseLyrics(text); // auto-detects API JSON / AMLL TTML / NetEase YRC
+          const text = (await res.text()).trim();
+          if (text) {
+            // API JSON format: extract lrc + tlyric, parse with plain LRC (no filtering)
+            if (text.startsWith("{")) {
+              try {
+                const json = JSON.parse(text);
+                if (json.lrc?.lyric || json.tlyric?.lyric) {
+                  const { parseLrc } = await import("./lyrics/lrc");
+                  const { mergeTranslations } = await import("./lyrics/translation");
+                  if (json.yrc?.lyric) {
+                    const { parseNeteaseLyrics } = await import("./lyrics/netease");
+                    lyrics = parseNeteaseLyrics(json.yrc.lyric, json.lrc?.lyric || json.yrc.lyric);
+                  } else {
+                    lyrics = parseLrc(json.lrc?.lyric || "");
+                    if (json.tlyric?.lyric) lyrics = mergeTranslations(lyrics, json.tlyric.lyric);
+                  }
+                }
+              } catch {
+                lyrics = parseLyrics(text);
+              }
+            } else {
+              lyrics = parseLyrics(text); // AMLL TTML or other
+            }
             needsLyricsMatch = false;
             console.log(`[Static] Lyrics: ${item.title} (${lyrics.length} lines)`);
           }
