@@ -52,16 +52,25 @@ const main = async () => {
     }
     ids++;
 
-    // 2. API YRC first (user's preference)
+    // 2. API first: YRC > LRC > nothing
     const data = await fetchJson(`${API}/lyric/new?id=${entry.neteaseId}`);
     const yrcContent = data?.yrc?.lyric;
+    const lrcContent = data?.lrc?.lyric;
     if (yrcContent && yrcContent.length > 30) {
       writeFileSync(join(musicDir, yrcFile), yrcContent, "utf-8");
       entry.yrcPath = `music/${yrcFile}`;
-      delete entry.lyricsPath;
-      delete entry.ttmlPath;
+      delete entry.lyricsPath; delete entry.ttmlPath;
       yrc++;
-      console.log(`  📝 YRC`);
+      console.log(`  📝 YRC (word-level)`);
+      await sleep(400);
+      continue;
+    }
+    if (lrcContent && lrcContent.length > 30) {
+      writeFileSync(join(musicDir, yrcFile), lrcContent, "utf-8");
+      entry.yrcPath = `music/${yrcFile}`;
+      delete entry.lyricsPath; delete entry.ttmlPath;
+      yrc++;
+      console.log(`  📝 YRC (LRC from API)`);
       await sleep(400);
       continue;
     }
@@ -78,11 +87,10 @@ const main = async () => {
     }
     if (gotTtml) {
       entry.ttmlPath = `music/${ttmlFile}`;
-      delete entry.lyricsPath;
+      delete entry.lyricsPath; delete entry.yrcPath;
       try { unlinkSync(join(musicDir, yrcFile)); } catch {}
-      try { unlinkSync(join(musicDir, `${fn}.lrc`)); } catch {}
       ttml++;
-      console.log(`  🎯 TTML (AMLL fallback)`);
+      console.log(`  🎯 TTML (AMLL)`);
     } else {
       console.log(`  ⚠️  No lyrics`);
     }

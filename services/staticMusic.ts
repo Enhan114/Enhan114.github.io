@@ -63,10 +63,15 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
         if (res.ok) {
           const text = await res.text();
           if (text.trim()) {
+            // Try YRC first, fall back to LRC parsing
             const { parseNeteaseLyrics } = await import("./lyrics/netease");
             lyrics = parseNeteaseLyrics(text);
+            if (lyrics.length === 0) {
+              const { parseLyrics } = await import("./lyrics");
+              lyrics = parseLyrics(text);
+            }
             needsLyricsMatch = false;
-            console.log(`[Static] YRC: ${item.title} (${lyrics.length} lines)`);
+            console.log(`[Static] YRC/LRC: ${item.title} (${lyrics.length} lines)`);
           }
         }
       } catch { /* unavailable */ }
