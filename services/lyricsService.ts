@@ -589,7 +589,7 @@ export const fetchLyricsById = async (
 
   // 2. AMLL TTML — same-origin, works from browser
   try {
-    const ttmlRes = await fetch(`${AMLL_BASE}/${songId}.ttml`);
+    const ttmlRes = await fetch(`${AMLL_BASE}/${songId}.yrc`);
     if (ttmlRes.ok) {
       const ttml = await ttmlRes.text();
       if (ttml.trim() && ttml.length > 30) {

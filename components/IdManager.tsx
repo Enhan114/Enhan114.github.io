@@ -63,7 +63,7 @@ const fetchFromApi = async (id: string): Promise<import("../types").LyricLine[]>
 // AMLL TTML — same-origin, no CORS
 const fetchFromAmll = async (id: string): Promise<import("../types").LyricLine[]> => {
   try {
-    const res = await fetch(`/amll-ttml-db/ncm-lyrics/${id}.ttml`);
+    const res = await fetch(`/amll-ttml-db/ncm-lyrics/${id}.yrc`);
     if (!res.ok) return [];
     const text = await res.text();
     if (!text.trim() || text.length < 30) return [];
