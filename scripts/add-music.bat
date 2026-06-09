@@ -86,10 +86,16 @@ for %%f in ("!DIR_PATH!\*.flac") do (
 echo.
 echo   --- Building... ---
 call npx vite build --logLevel error
+echo   --- Unlocking manifest for commit... ---
+git update-index --no-skip-worktree public\music-manifest.json 2>nul
+git update-index --no-skip-worktree docs\music-manifest.json 2>nul
 echo   --- Committing & pushing... ---
 git add -A 2>nul
 git commit -m "Add music via script" 2>nul
 git push 2>nul
+echo   --- Locking manifest... ---
+git update-index --skip-worktree public\music-manifest.json 2>nul
+git update-index --skip-worktree docs\music-manifest.json 2>nul
 echo.
 echo   Done! Press any key to return to menu...
 pause >nul
