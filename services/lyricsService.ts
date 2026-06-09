@@ -336,7 +336,7 @@ export const mergeMetadata = (input: {
 };
 
 export const getNeteaseAudioUrl = (id: string) => {
-  return `${NETEASE_API}/song/url?id=${id}`;
+  return `${NETEASE_API}/song/url/match?id=${id}`;
 };
 
 /**
