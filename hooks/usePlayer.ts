@@ -887,9 +887,9 @@ export const usePlayer = ({
         try {
           const res = await fetch(fileUrl);
           const data = await res.json();
-          const urls = data?.data ?? data?.body;
-          const best = Array.isArray(urls) ? urls.find((u: any) => u.url) || urls[0] : urls;
-          if (best?.url) actualUrl = best.url;
+          // Response format: { code: 200, data: "https://...actual-url..." }
+          const url = typeof data?.data === "string" ? data.data : data?.data?.url ?? data?.data?.[0]?.url;
+          if (url) actualUrl = url;
         } catch { /* keep original URL */ }
       }
 
