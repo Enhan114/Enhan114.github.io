@@ -67,15 +67,36 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
         if (res.ok) {
           const text = (await res.text()).trim();
           if (!text) continue;
-          // API JSON: extract all lyric fields, parse with plain LRC (no filtering)
+          // API JSON: extract ALL fields, keep metadata lines as real lyrics
           if (text.startsWith("{")) {
             try {
               const json = JSON.parse(text);
-              const lrcRaw = json.lrc?.lyric || "";
-              const tlyricRaw = json.tlyric?.lyric || "";
+              const lrcRaw: string = json.lrc?.lyric || "";
+              const tlyricRaw: string = json.tlyric?.lyric || "";
+              const romanRaw: string = json.romalrc?.lyric || "";
+
+              // Convert JSON metadata lines (制作人, 作词, etc.) to LyricLine[]
+              const metaLines: import("../types").LyricLine[] = [];
+              for (const line of lrcRaw.split("\n")) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith('{"t":')) continue;
+                try {
+                  const meta = JSON.parse(trimmed);
+                  const ms: number = meta.t || 0;
+                  const text = (meta.c as Array<{ tx?: string }>)
+                    ?.map((c) => c.tx || "")
+                    .join("")
+                    .trim();
+                  if (text) metaLines.push({ time: ms / 1000, text, isMetadata: false });
+                } catch { /* not valid JSON metadata */ }
+              }
+
+              // Parse LRC (ignores JSON lines, keeps [mm:ss.xx] lines)
               if (lrcRaw) {
                 lyrics = parseLrc(lrcRaw);
                 if (tlyricRaw) lyrics = mergeTranslations(lyrics, tlyricRaw);
+                // Prepend metadata lines at the beginning
+                if (metaLines.length > 0) lyrics = [...metaLines, ...lyrics];
                 needsLyricsMatch = false;
               }
             } catch { /* invalid JSON, skip */ }
