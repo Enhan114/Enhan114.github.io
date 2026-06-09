@@ -54,7 +54,8 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
     // Load lyrics — try manifest path, then derive from title (immune to manifest reversion)
     let lyrics: import("../types").LyricLine[] = [];
     let needsLyricsMatch = true;
-    const { parseLyrics } = await import("./lyrics");
+    const { parseLrc } = await import("./lyrics/lrc");
+    const { mergeTranslations } = await import("./lyrics/translation");
     const sanitize = (s: string) => s.replace(/[<>:"/\\|?*]/g, "");
     const candidates = [item.ttmlPath, `music/${sanitize(item.title)}.ttml`];
 
@@ -65,13 +66,30 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
         const res = await fetch(url);
         if (res.ok) {
           const text = (await res.text()).trim();
-          if (text) {
+          if (!text) continue;
+          // API JSON: extract all lyric fields, parse with plain LRC (no filtering)
+          if (text.startsWith("{")) {
+            try {
+              const json = JSON.parse(text);
+              const lrcRaw = json.lrc?.lyric || "";
+              const tlyricRaw = json.tlyric?.lyric || "";
+              if (lrcRaw) {
+                lyrics = parseLrc(lrcRaw);
+                if (tlyricRaw) lyrics = mergeTranslations(lyrics, tlyricRaw);
+                needsLyricsMatch = false;
+              }
+            } catch { /* invalid JSON, skip */ }
+          } else {
+            // AMLL TTML or other format
+            const { parseLyrics } = await import("./lyrics");
             lyrics = parseLyrics(text);
             needsLyricsMatch = false;
-            console.log(`[Static] Lyrics: ${item.title} (${lyrics.length} lines)`);
           }
         }
       } catch { /* file not found */ }
+    }
+    if (lyrics.length > 0) {
+      console.log(`[Static] Lyrics: ${item.title} (${lyrics.length} lines)`);
     }
 
     const hasNeteaseId = item.neteaseId && item.neteaseId.trim().length > 0;
