@@ -1,53 +1,78 @@
 /**
- * Quick-add music + rebuild + push — all from terminal.
+ * Quick-add music + rebuild + push — standalone, run from anywhere.
  *
  * Usage:
- *   node scripts/add-music.mjs "C:\my-music\Song.flac"
- *   node scripts/add-music.mjs "C:\my-music\Song.flac" "C:\my-music\Another.flac"
+ *   node "C:\Web Music\scripts\add-music.mjs" "song.flac" --source=api
+ *   node /path/to/scripts/add-music.mjs "song.flac" --source=amll
+ *   node /path/to/scripts/add-music.mjs "song1.flac" "song2.flac" --source=api --project="C:\Web Music"
  *
- * What it does:
- *   1. Copy .flac/.mp3 files to public/music/
- *   2. Fetch NetEase IDs + lyrics (.ttml) via music-api.cc.cd
- *   3. Build site (vite build)
- *   4. Commit & push to GitHub
+ * --source=api   → lyrics from music-api.cc.cd (default)
+ * --source=amll  → lyrics from AMLL TTML DB
+ * --project=PATH → project root (default: auto-detect from script location)
  */
 
-import { copyFileSync, existsSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync } from "fs";
 import { resolve, basename, join, dirname } from "path";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, "..");
-const musicDir = join(root, "public", "music");
+const SCRIPT_NAME = basename(fileURLToPath(import.meta.url));
 
-const run = (cmd) => {
-  console.log(`\n> ${cmd}`);
-  execSync(cmd, { cwd: root, stdio: "inherit" });
-};
+// Parse args
+const args = process.argv.slice(2);
+const files = [];
+let source = "api";
+let projectRoot = resolve(__dirname, "..");
 
-const files = process.argv.slice(2).filter(Boolean);
+for (const arg of args) {
+  if (arg.startsWith("--source=")) {
+    source = arg.split("=")[1].toLowerCase();
+    if (!["api", "amll"].includes(source)) {
+      console.error("❌ --source 必须是 api 或 amll");
+      process.exit(1);
+    }
+  } else if (arg.startsWith("--project=")) {
+    projectRoot = resolve(arg.split("=")[1]);
+  } else {
+    files.push(arg);
+  }
+}
 
 if (!files.length) {
-  console.log("用法: node scripts/add-music.mjs <音频文件路径> [更多文件...]");
+  console.log(`用法: node ${SCRIPT_NAME} <音频文件> [更多文件...] [--source=api|amll] [--project=路径]`);
   process.exit(1);
 }
 
+if (!existsSync(projectRoot)) {
+  console.error(`❌ 项目目录不存在: ${projectRoot}`);
+  process.exit(1);
+}
+
+const musicDir = join(projectRoot, "public", "music");
+mkdirSync(musicDir, { recursive: true });
+
+const run = (cmd) => {
+  console.log(`\n> ${cmd}`);
+  execSync(cmd, { cwd: projectRoot, stdio: "inherit" });
+};
+
 // Step 1: Copy files
-console.log("📁 复制文件...");
+console.log(`📁 复制 ${files.length} 个文件...`);
 for (const file of files) {
   const absPath = resolve(file);
   if (!existsSync(absPath)) {
-    console.error(`❌ 文件不存在: ${file}`);
+    console.error(`   ❌ 文件不存在: ${file}`);
     continue;
   }
   const dest = join(musicDir, basename(file));
   copyFileSync(absPath, dest);
-  console.log(`   ✅ ${basename(file)} → public/music/`);
+  console.log(`   ✅ ${basename(file)}`);
 }
 
 // Step 2: Fetch lyrics
-console.log("\n🎵 获取歌词...");
+console.log(`\n🎵 获取歌词 (来源: ${source === "amll" ? "AMLL TTML" : "API"})...`);
+if (source === "amll") process.env.LYRICS_SOURCE = "amll";
 run("node scripts/fetchNeteaseIds.mjs");
 
 // Step 3: Build
@@ -57,7 +82,7 @@ run("npx vite build");
 // Step 4: Git commit & push
 console.log("\n📤 提交上传...");
 try { run('git add -A'); } catch {}
-try { run(`git commit -m "Add music: ${files.map(f => basename(f)).join(", ")}"`); } catch {}
+try { run(`git commit -m "Add: ${files.map(f => basename(f)).join(", ")}" --allow-empty`); } catch {}
 try { run("git push"); } catch {}
 
-console.log("\n✅ 完成！");
+console.log(`\n✅ 完成！歌词来源: ${source === "amll" ? "AMLL" : "API"}`);
