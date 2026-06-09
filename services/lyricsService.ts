@@ -587,19 +587,22 @@ export const fetchLyricsById = async (
     // API unreachable → fall through to AMLL
   }
 
-  // 2. AMLL — try .ttml first, then .yrc (same-origin, no CORS)
-  try {
+  // 2. AMLL — same-origin first, production URL fallback (dev mode)
+  const amllBases = [AMLL_BASE, "https://webmusic.cc.cd/amll-ttml-db/ncm-lyrics"];
+  for (const base of amllBases) {
     for (const ext of [".ttml", ".yrc"]) {
-      const ttmlRes = await fetch(`${AMLL_BASE}/${songId}${ext}`);
-      if (ttmlRes.ok) {
-        const ttml = await ttmlRes.text();
-        if (ttml.trim() && ttml.length > 30) {
-          console.log(`[Lyrics] got AMLL (${ext}) for ${songId}`);
-          return { ttml, metadata: [] };
+      try {
+        const ttmlRes = await fetch(`${base}/${songId}${ext}`);
+        if (ttmlRes.ok) {
+          const ttml = await ttmlRes.text();
+          if (ttml.trim() && ttml.length > 200 && !ttml.startsWith("<!")) {
+            console.log(`[Lyrics] got AMLL (${ext}) for ${songId}`);
+            return { ttml, metadata: [] };
+          }
         }
-      }
+      } catch {}
     }
-  } catch { /* also unreachable */ }
+  }
 
   return null;
 };

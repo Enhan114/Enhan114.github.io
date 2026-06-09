@@ -60,18 +60,26 @@ const fetchFromApi = async (id: string): Promise<import("../types").LyricLine[]>
   } catch { return []; }
 };
 
-// AMLL — same-origin, .ttml first, .yrc fallback
+// AMLL — same-origin (production) or absolute (dev fallback)
+const AMLL_PATHS = [
+  "/amll-ttml-db/ncm-lyrics",                           // production: same-origin
+  "https://webmusic.cc.cd/amll-ttml-db/ncm-lyrics",     // dev fallback
+];
+
 const fetchFromAmll = async (id: string): Promise<import("../types").LyricLine[]> => {
-  try {
+  for (const base of AMLL_PATHS) {
     for (const ext of [".ttml", ".yrc"]) {
-      const res = await fetch(`/amll-ttml-db/ncm-lyrics/${id}${ext}`);
-      if (!res.ok) continue;
-      const text = await res.text();
-      if (!text.trim() || text.length < 30) continue;
-      const { parseLyrics } = await import("../services/lyrics");
-      return parseLyrics(text);
+      try {
+        const res = await fetch(`${base}/${id}${ext}`);
+        if (!res.ok) continue;
+        const text = await res.text();
+        // Skip HTML responses (Vite dev server returns index.html for unknown paths)
+        if (text.startsWith("<!") || text.length < 200) continue;
+        const { parseLyrics } = await import("../services/lyrics");
+        return parseLyrics(text);
+      } catch {}
     }
-  } catch {}
+  }
   return [];
 };
 
