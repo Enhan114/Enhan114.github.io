@@ -60,15 +60,16 @@ const fetchFromApi = async (id: string): Promise<import("../types").LyricLine[]>
   } catch { return []; }
 };
 
-// AMLL TTML — load via local API proxy or direct (Node.js only, browser CORS-blocked)
+// AMLL TTML — same-origin, no CORS
 const fetchFromAmll = async (id: string): Promise<import("../types").LyricLine[]> => {
   try {
-    // Try API first (your proxy)
-    const res = await fetch(`https://music-api.cc.cd/lyric/new?id=${id}`);
-    if (res.ok) return fetchFromApi(id);
-  } catch {}
-  // AMLL is CORS-blocked from browser — skip, use API
-  return [];
+    const res = await fetch(`/amll-ttml-db/ncm-lyrics/${id}.ttml`);
+    if (!res.ok) return [];
+    const text = await res.text();
+    if (!text.trim() || text.length < 30) return [];
+    const { parseLyrics } = await import("../services/lyrics");
+    return parseLyrics(text);
+  } catch { return []; }
 };
 
 const IdManager: React.FC<IdManagerProps> = ({ isOpen, onClose, queue, onIdChanged }) => {

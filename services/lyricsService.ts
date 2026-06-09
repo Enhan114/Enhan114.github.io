@@ -2,7 +2,7 @@ import { fetchViaProxy } from "./utils";
 import { isMetadataLine } from "./lyrics/types";
 
 const NETEASE_API = "https://music-api.cc.cd";
-const TTML_DB_BASE = "https://amll-ttml-db.stevexmh.net";
+const AMLL_BASE = "/amll-ttml-db/ncm-lyrics"; // same-origin, no CORS
 
 const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)$/;
 
@@ -587,9 +587,9 @@ export const fetchLyricsById = async (
     // API unreachable → fall through to AMLL
   }
 
-  // 2. AMLL TTML — only when API is unreachable
+  // 2. AMLL TTML — same-origin, works from browser
   try {
-    const ttmlRes = await fetch(`${TTML_DB_BASE}/ncm/${songId}`);
+    const ttmlRes = await fetch(`${AMLL_BASE}/${songId}.ttml`);
     if (ttmlRes.ok) {
       const ttml = await ttmlRes.text();
       if (ttml.trim() && ttml.length > 30) {

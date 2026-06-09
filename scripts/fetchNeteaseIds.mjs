@@ -21,7 +21,7 @@ mkdirSync(musicDir, { recursive: true });
 const sanitize = (s) => s.replace(/[<>:"/\\|?*]/g, "");
 
 const API = "https://music-api.cc.cd";
-const AMLL = "https://amll-ttml-db.stevexmh.net/ncm";
+const AMLL = "https://webmusic.cc.cd/amll-ttml-db/ncm-lyrics"; // same-origin, no CORS
 
 const fetchJson = async (url) => { try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; } };
 const fetchText = async (url) => { try { const r = await fetch(url); return r.ok ? (await r.text()).trim() : null; } catch { return null; } };
