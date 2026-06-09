@@ -225,15 +225,6 @@
     "ttmlPath": "music/247.ttml"
   },
   {
-    "filePath": "music/The Chainsmokers,Coldplay - Something Just Like This.flac",
-    "coverPath": "music/The Chainsmokers,Coldplay - Something Just Like This.cover.jpg",
-    "title": "Something Just Like This",
-    "artist": "The Chainsmokers,Coldplay",
-    "id": "static-The-Chainsmokers-Coldplay---Something-Just-Like-This-flac",
-    "neteaseId": "461347998",
-    "ttmlPath": "music/Something Just Like This.ttml"
-  },
-  {
     "filePath": "music/Twinbed - Trouble I'm In.flac",
     "coverPath": "music/Twinbed - Trouble I'm In.cover.jpg",
     "title": "Trouble I'm In",
@@ -248,7 +239,7 @@
     "title": "Lost Within The End",
     "artist": "wenznv",
     "id": "static-wenznv---Lost-Within-The-End-flac",
-    "neteaseId": "2670833053",
+    "neteaseId": "2653324710",
     "ttmlPath": "music/Lost Within The End.ttml"
   },
   {
