@@ -51,24 +51,27 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       }
     }
 
-    // Load word-level lyrics — TTML (AMLL) or YRC (NetEase API)
+    // Load lyrics — try manifest path, then derive from title (immune to manifest reversion)
     let lyrics: import("../types").LyricLine[] = [];
     let needsLyricsMatch = true;
-    const { parseLyrics, isTtmlFormat } = await import("./lyrics");
+    const { parseLyrics } = await import("./lyrics");
+    const sanitize = (s: string) => s.replace(/[<>:"/\\|?*]/g, "");
+    const candidates = [item.ttmlPath, `music/${sanitize(item.title)}.ttml`];
 
-    if (item.ttmlPath) {
+    for (const candidate of candidates) {
+      if (!candidate || lyrics.length > 0) continue;
       try {
-        const url = resolveAssetUrl(item.ttmlPath);
+        const url = resolveAssetUrl(candidate);
         const res = await fetch(url);
         if (res.ok) {
           const text = (await res.text()).trim();
           if (text) {
-            lyrics = parseLyrics(text); // full file as-is — unwrapPayload handles API JSON
+            lyrics = parseLyrics(text);
             needsLyricsMatch = false;
             console.log(`[Static] Lyrics: ${item.title} (${lyrics.length} lines)`);
           }
         }
-      } catch { /* unavailable */ }
+      } catch { /* file not found */ }
     }
 
     const hasNeteaseId = item.neteaseId && item.neteaseId.trim().length > 0;
