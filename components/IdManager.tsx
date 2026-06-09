@@ -80,7 +80,7 @@ const IdManager: React.FC<IdManagerProps> = ({ isOpen, onClose, queue, onIdChang
   const [status, setStatus] = useState<Record<string, string>>({});
 
   const songs = queue
-    .filter((s) => s.source === "remote" && s.fileUrl && !s.fileUrl.startsWith("blob:"))
+    .filter((s) => s.fileUrl && (s.source === "remote" || s.source === "local"))
     .sort((a, b) => a.title.localeCompare(b.title));
 
   const getEffectiveId = (song: Song) => overrides[song.id] || song.neteaseId || KNOWN_IDS[song.title] || "";
