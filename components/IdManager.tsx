@@ -28,35 +28,47 @@ const saveSources = (map: Record<string, string>) => {
   try { window.localStorage.setItem(SOURCE_KEY, JSON.stringify(map)); } catch {}
 };
 
-// Fetch from NetEase API
+// Fetch from NetEase API — same parsing as staticMusic.ts (keeps metadata)
 const fetchFromApi = async (id: string): Promise<import("../types").LyricLine[]> => {
   try {
     const res = await fetch(`https://music-api.cc.cd/lyric/new?id=${id}`);
     if (!res.ok) return [];
     const data = await res.json();
-    const yrc = data?.yrc?.lyric;
-    const lrc = data?.lrc?.lyric;
-    const content = yrc || lrc;
-    if (!content || content.length < 10) return [];
-    if (yrc) {
-      const { parseNeteaseLyrics } = await import("../services/lyrics/netease");
-      return parseNeteaseLyrics(yrc);
+    const lrcRaw = data?.lrc?.lyric || "";
+    const tlyricRaw = data?.tlyric?.lyric || "";
+    if (!lrcRaw) return [];
+
+    // Same logic as staticMusic.ts: convert JSON metadata + parseLrc + mergeTranslations
+    const { parseLrc } = await import("../services/lyrics/lrc");
+    const { mergeTranslations } = await import("../services/lyrics/translation");
+
+    const metaLines: import("../types").LyricLine[] = [];
+    for (const line of lrcRaw.split("\n")) {
+      const t = line.trim();
+      if (!t.startsWith('{"t":')) continue;
+      try {
+        const m = JSON.parse(t);
+        const ms = m.t || 0;
+        const tx = (m.c || []).map((c: any) => c.tx || "").join("").trim();
+        if (tx) metaLines.push({ time: ms / 1000, text: tx, isMetadata: false });
+      } catch {}
     }
-    const { parseLyrics } = await import("../services/lyrics");
-    return parseLyrics(lrc);
+
+    let lyrics = parseLrc(lrcRaw);
+    if (tlyricRaw) lyrics = mergeTranslations(lyrics, tlyricRaw);
+    return [...metaLines, ...lyrics];
   } catch { return []; }
 };
 
-// Fetch from AMLL TTML
+// AMLL TTML — load via local API proxy or direct (Node.js only, browser CORS-blocked)
 const fetchFromAmll = async (id: string): Promise<import("../types").LyricLine[]> => {
   try {
-    const res = await fetch(`https://amll-ttml-db.stevexmh.net/ncm/${id}`);
-    if (!res.ok) return [];
-    const text = await res.text();
-    if (!text.trim() || text.length < 30) return [];
-    const { parseLyrics } = await import("../services/lyrics");
-    return parseLyrics(text);
-  } catch { return []; }
+    // Try API first (your proxy)
+    const res = await fetch(`https://music-api.cc.cd/lyric/new?id=${id}`);
+    if (res.ok) return fetchFromApi(id);
+  } catch {}
+  // AMLL is CORS-blocked from browser — skip, use API
+  return [];
 };
 
 const IdManager: React.FC<IdManagerProps> = ({ isOpen, onClose, queue, onIdChanged }) => {
