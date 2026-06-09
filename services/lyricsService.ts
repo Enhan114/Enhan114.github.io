@@ -587,14 +587,16 @@ export const fetchLyricsById = async (
     // API unreachable → fall through to AMLL
   }
 
-  // 2. AMLL TTML — same-origin, works from browser
+  // 2. AMLL — try .ttml first, then .yrc (same-origin, no CORS)
   try {
-    const ttmlRes = await fetch(`${AMLL_BASE}/${songId}.yrc`);
-    if (ttmlRes.ok) {
-      const ttml = await ttmlRes.text();
-      if (ttml.trim() && ttml.length > 30) {
-        console.log(`[Lyrics] got AMLL TTML for ${songId}`);
-        return { ttml, metadata: [] };
+    for (const ext of [".ttml", ".yrc"]) {
+      const ttmlRes = await fetch(`${AMLL_BASE}/${songId}${ext}`);
+      if (ttmlRes.ok) {
+        const ttml = await ttmlRes.text();
+        if (ttml.trim() && ttml.length > 30) {
+          console.log(`[Lyrics] got AMLL (${ext}) for ${songId}`);
+          return { ttml, metadata: [] };
+        }
       }
     }
   } catch { /* also unreachable */ }

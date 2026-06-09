@@ -60,16 +60,19 @@ const fetchFromApi = async (id: string): Promise<import("../types").LyricLine[]>
   } catch { return []; }
 };
 
-// AMLL TTML — same-origin, no CORS
+// AMLL — same-origin, .ttml first, .yrc fallback
 const fetchFromAmll = async (id: string): Promise<import("../types").LyricLine[]> => {
   try {
-    const res = await fetch(`/amll-ttml-db/ncm-lyrics/${id}.yrc`);
-    if (!res.ok) return [];
-    const text = await res.text();
-    if (!text.trim() || text.length < 30) return [];
-    const { parseLyrics } = await import("../services/lyrics");
-    return parseLyrics(text);
-  } catch { return []; }
+    for (const ext of [".ttml", ".yrc"]) {
+      const res = await fetch(`/amll-ttml-db/ncm-lyrics/${id}${ext}`);
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (!text.trim() || text.length < 30) continue;
+      const { parseLyrics } = await import("../services/lyrics");
+      return parseLyrics(text);
+    }
+  } catch {}
+  return [];
 };
 
 const IdManager: React.FC<IdManagerProps> = ({ isOpen, onClose, queue, onIdChanged }) => {
