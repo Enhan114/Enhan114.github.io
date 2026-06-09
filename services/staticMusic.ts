@@ -1,5 +1,6 @@
 import { Song } from "../types";
 import { extractColors } from "./utils";
+import { KNOWN_IDS } from "./knownIds";
 
 interface ManifestEntry {
   id: string;
@@ -113,7 +114,9 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       console.log(`[Static] Lyrics: ${item.title} (${lyrics.length} lines)`);
     }
 
-    const hasNeteaseId = item.neteaseId && item.neteaseId.trim().length > 0;
+    // Use manifest neteaseId, fall back to hardcoded known IDs
+    const effectiveId = item.neteaseId?.trim() || KNOWN_IDS[item.title] || "";
+    const hasNeteaseId = Boolean(effectiveId);
     songs.push({
       id: item.id,
       title: item.title,
@@ -125,7 +128,7 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       lyrics,
       needsLyricsMatch,
       isNetease: hasNeteaseId || undefined,
-      neteaseId: hasNeteaseId ? item.neteaseId : undefined,
+      neteaseId: hasNeteaseId ? effectiveId : undefined,
       colors: colors.length > 0 ? colors : [],
     });
   }

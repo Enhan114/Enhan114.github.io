@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Song } from "../types";
+import { KNOWN_IDS } from "../services/knownIds";
 
 interface IdManagerProps {
   isOpen: boolean;
@@ -70,7 +71,7 @@ const IdManager: React.FC<IdManagerProps> = ({ isOpen, onClose, queue, onIdChang
     .filter((s) => s.source === "remote" && s.fileUrl && !s.fileUrl.startsWith("blob:"))
     .sort((a, b) => a.title.localeCompare(b.title));
 
-  const getEffectiveId = (song: Song) => overrides[song.id] || song.neteaseId || "";
+  const getEffectiveId = (song: Song) => overrides[song.id] || song.neteaseId || KNOWN_IDS[song.title] || "";
   const getSource = (song: Song) => sources[song.id] || "api";
 
   const toggleSource = (song: Song) => {

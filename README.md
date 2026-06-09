@@ -51,3 +51,5 @@ This project is configured to build with relative asset paths for static hosting
 - If you publish from the `gh-pages` branch or GitHub Pages root folder, upload the contents of `dist/`
 - If you need a custom base path, add `VITE_BASE_PATH` to `.env.local` and rebuild
 
+以后加新歌跑 npm run build:full 就行
+
