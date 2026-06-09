@@ -576,7 +576,7 @@ export const fetchLyricsById = async (
       const rawLrc: string | undefined = data?.lrc?.lyric;
       const rawTLrc: string | undefined = data?.tlyric?.lyric;
       if (rawYrc || rawLrc || rawTLrc) {
-        console.log(`[Lyrics] got ${rawYrc ? 'YRC' : rawLrc ? 'LRC' : 'tlyric'} for ${songId} (API)`);
+        console.log(`[Lyrics] using API full response as TTML for ${songId}`);
         // Pass entire API response as ttml → mergeLyricsWithMetadata uses unwrapPayload
         return { ttml: JSON.stringify(data), metadata: [] };
       }

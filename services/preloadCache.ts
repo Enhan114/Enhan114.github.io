@@ -143,12 +143,14 @@ export const preloadAll = async (
         }
         report(song.title, "audio");
 
-        // Lyrics — skip cloud matching if local LRC was loaded at init
+        // Lyrics — use already-loaded local .ttml, otherwise cloud match
         onProgress({ done, total: totalSteps, current: song.title, currentType: "lyrics" });
-        if ((song.lyrics?.length ?? 0) > 0 && song.needsLyricsMatch === false) {
-          // Already have local lyrics from build-time download
+        const hasLocal = (song.lyrics?.length ?? 0) > 0 && song.needsLyricsMatch === false;
+        if (hasLocal) {
+          console.log(`[PreloadCache] using local lyrics: ${song.title} (${song.lyrics!.length} lines)`);
           onSongProgress(song.id, "lyrics", "done", undefined, song.lyrics);
         } else {
+          console.log(`[PreloadCache] cloud matching: ${song.title}`);
           onSongProgress(song.id, "lyrics", "loading");
           try {
             const { searchAndMatchLyrics } = await import("../services/lyricsService");
