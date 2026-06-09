@@ -2,9 +2,9 @@
  * Quick-add music + rebuild + push — standalone, run from anywhere.
  *
  * Usage:
- *   node scripts/add-music.mjs "song.flac" --source=api
- *   node scripts/add-music.mjs "song.flac" --source=amll
- *   node scripts/add-music.mjs "song1.flac" "song2.flac" --source=api --project="C:\Web Music"
+ *   node "C:\Web Music\scripts\add-music.mjs" "song.flac" --source=api
+ *   node /path/to/scripts/add-music.mjs "song.flac" --source=amll
+ *   node /path/to/scripts/add-music.mjs "song1.flac" "song2.flac" --source=api --project="C:\Web Music"
  *
  * --source=api   → lyrics from music-api.cc.cd (default)
  * --source=amll  → lyrics from AMLL TTML DB
@@ -22,7 +22,7 @@ const SCRIPT_NAME = basename(fileURLToPath(import.meta.url));
 // Parse args
 const args = process.argv.slice(2);
 const files = [];
-let source = "amll";                        // 默认改为 AMLL
+let source = "api";
 let projectRoot = resolve(__dirname, "..");
 
 for (const arg of args) {
@@ -70,26 +70,15 @@ for (const file of files) {
   console.log(`   ✅ ${basename(file)}`);
 }
 
-// Step 1.5: Auto-update music-manifest.json (always write valid JSON)
+// Auto‑update music-manifest.json
 const manifestPath = join(projectRoot, "public", "music-manifest.json");
 let manifest = [];
-
-// Try to read existing manifest
 if (existsSync(manifestPath)) {
-  try {
-    const raw = readFileSync(manifestPath, "utf-8");
-    if (raw.trim().length > 0) {
-      manifest = JSON.parse(raw);
-      if (!Array.isArray(manifest)) manifest = [];   // ensure array
-    }
-  } catch {
-    console.warn("⚠️ 清单文件损坏，将重新创建");
-  }
+  manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
 }
 
-// Add new files
 for (const file of files) {
-  const name = basename(file, extname(file));        // "Beyond - 海阔天空"
+  const name = basename(file, extname(file));      // 去掉扩展名，如 "Beyond - 海阔天空"
   const parts = name.split(" - ");
   let artist, title;
   if (parts.length >= 2) {
@@ -99,22 +88,13 @@ for (const file of files) {
     artist = "未知艺术家";
     title = name.trim();
   }
-  // Avoid duplicates
+  // 避免重复添加
   if (!manifest.find(m => m.title === title && m.artist === artist)) {
     manifest.push({ title, artist });
   }
 }
 
-// Write back — ensure file is never empty
-const jsonContent = JSON.stringify(manifest, null, 2) + "\n";
-writeFileSync(manifestPath, jsonContent, "utf-8");
-
-// Verify immediately
-const verify = readFileSync(manifestPath, "utf-8");
-if (verify.trim().length === 0) {
-  console.error("❌ 写入 music-manifest.json 失败，文件为空！");
-  process.exit(1);
-}
+writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
 console.log(`📋 已更新音乐清单 (${manifest.length} 首)`);
 
 // Step 2: Fetch lyrics
@@ -126,9 +106,9 @@ run("node scripts/fetchNeteaseIds.mjs");
 console.log("\n🔨 构建...");
 run("npx vite build");
 
-// Step 4: Git commit & push (only relevant files)
+// Step 4: Git commit & push
 //console.log("\n📤 提交上传...");
-//try { run("git add public/music/ public/music-manifest.json docs/"); } catch {}
+//try { run('git add -A'); } catch {}
 //try { run(`git commit -m "Add: ${files.map(f => basename(f)).join(", ")}" --allow-empty`); } catch {}
 //try { run("git push"); } catch {}
 
