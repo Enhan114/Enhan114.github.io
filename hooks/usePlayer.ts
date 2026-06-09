@@ -881,14 +881,26 @@ export const usePlayer = ({
 
     // Resolve audio source: in-memory → IndexedDB → network
     (async () => {
-      let blob = audioResourceCache.get(fileUrl) ?? null;
+      // Resolve API URL to actual audio URL if needed
+      let actualUrl = fileUrl;
+      if (fileUrl.includes("music-api.cc.cd/song/url")) {
+        try {
+          const res = await fetch(fileUrl);
+          const data = await res.json();
+          // Response format: { code: 200, data: "https://...actual-url..." }
+          const url = typeof data?.data === "string" ? data.data : data?.data?.url ?? data?.data?.[0]?.url;
+          if (url) actualUrl = url;
+        } catch { /* keep original URL */ }
+      }
+
+      let blob = audioResourceCache.get(actualUrl) ?? null;
 
       if (!blob) {
         try {
           const { loadAudioBlob } = await import("../services/audioCacheDB");
-          const persisted = await loadAudioBlob(fileUrl);
+          const persisted = await loadAudioBlob(actualUrl);
           if (persisted) {
-            audioResourceCache.set(fileUrl, persisted);
+            audioResourceCache.set(actualUrl, persisted);
             blob = persisted;
           }
         } catch { /* unavailable */ }
@@ -905,9 +917,9 @@ export const usePlayer = ({
         return;
       }
 
-      // Network fallback
+      // Network fallback — use resolved URL
       releaseObjectUrl();
-      setResolvedAudioSrc(null);
+      setResolvedAudioSrc(actualUrl !== fileUrl ? actualUrl : null);
       setIsBuffering(true);
       setBufferProgress(0);
     })();
@@ -918,7 +930,7 @@ export const usePlayer = ({
 
       controller = new AbortController();
       try {
-        const response = await fetch(fileUrl, { signal: controller.signal });
+        const response = await fetch(actualUrl, { signal: controller.signal });
         if (!response.ok) {
           throw new Error("Failed to load audio: " + response.status);
         }

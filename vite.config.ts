@@ -110,10 +110,13 @@ const walkMusicDir = (dir: string, relativeRoot = ""): Array<{ filePath: string;
 interface ManifestEntry {
   filePath: string;
   lyricsPath?: string;
+  ttmlPath?: string;
+  yrcPath?: string;
   coverPath?: string;
   title: string;
   artist: string;
   id: string;
+  neteaseId?: string;
 }
 
 const createMusicManifest = (rootDir: string): ManifestEntry[] => {
@@ -177,6 +180,26 @@ const MANIFEST_OUTPUT = "public/music-manifest.json";
 const writeManifest = (rootDir: string) => {
   const manifest = createMusicManifest(rootDir);
   const outPath = path.join(rootDir, MANIFEST_OUTPUT);
+
+  // Preserve existing neteaseId, ttmlPath, yrcPath, lyricsPath from old manifest
+  const oldMap = new Map<string, any>();
+  if (fs.existsSync(outPath)) {
+    try {
+      const old = JSON.parse(fs.readFileSync(outPath, "utf-8"));
+      for (const e of old) {
+        if (e.id) oldMap.set(e.id, { neteaseId: e.neteaseId, ttmlPath: e.ttmlPath, yrcPath: e.yrcPath, lyricsPath: e.lyricsPath });
+      }
+    } catch {}
+  }
+
+  for (const entry of manifest) {
+    const old = oldMap.get(entry.id);
+    if (old?.neteaseId) entry.neteaseId = old.neteaseId;
+    if (old?.ttmlPath) entry.ttmlPath = old.ttmlPath;
+    if (old?.yrcPath) entry.yrcPath = old.yrcPath;
+    if (old?.lyricsPath) entry.lyricsPath = old.lyricsPath;
+  }
+
   const dir = path.dirname(outPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(manifest, null, 2));

@@ -2,7 +2,7 @@ import { fetchViaProxy } from "./utils";
 import { isMetadataLine } from "./lyrics/types";
 
 const NETEASE_API = "https://music-api.cc.cd";
-const TTML_DB_BASE = "https://amll-ttml-db.stevexmh.net";
+const AMLL_BASE = "/amll-ttml-db/ncm-lyrics"; // same-origin, no CORS
 
 const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)$/;
 
@@ -336,7 +336,7 @@ export const mergeMetadata = (input: {
 };
 
 export const getNeteaseAudioUrl = (id: string) => {
-  return `${METING_API}?type=url&id=${id}`;
+  return `${NETEASE_API}/song/url/match?id=${id}`;
 };
 
 /**
@@ -566,24 +566,43 @@ export const searchAndMatchLyrics = async (
 export const fetchLyricsById = async (
   songId: string,
 ): Promise<MatchedLyricsResult | null> => {
+  // 1. API /lyric/new — always preferred, any lyrics format counts
   try {
-    // /lyric/new returns yrc (word-level timing), lrc, tlyric (translation)
     const url = `${NETEASE_API}/lyric/new?id=${encodeURIComponent(songId)}`;
     const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const rawYrc: string | undefined = data?.yrc?.lyric;
-    const rawLrc: string | undefined = data?.lrc?.lyric;
-    const rawTLrc: string | undefined = data?.tlyric?.lyric;
-    if (!rawYrc && !rawLrc) return null;
-    console.log(`[Lyrics] got ${rawYrc ? 'YRC' : 'LRC'} for ${songId} (${(rawYrc||rawLrc||'').length} chars)`);
-    return {
-      lrc: rawLrc,
-      yrc: rawYrc,
-      tLrc: rawTLrc?.trim() || undefined,
-      metadata: [],
-    };
-  } catch {
+    if (res.ok) {
+      const data = await res.json();
+      const rawYrc: string | undefined = data?.yrc?.lyric;
+      const rawLrc: string | undefined = data?.lrc?.lyric;
+      const rawTLrc: string | undefined = data?.tlyric?.lyric;
+      if (rawYrc || rawLrc || rawTLrc) {
+        console.log(`[Lyrics] using API full response as TTML for ${songId}`);
+        // Pass entire API response as ttml → mergeLyricsWithMetadata uses unwrapPayload
+        return { ttml: JSON.stringify(data), metadata: [] };
+      }
+    }
+    // API reachable but no lyrics for this song — don't fall back
     return null;
+  } catch {
+    // API unreachable → fall through to AMLL
   }
+
+  // 2. AMLL — same-origin first, production URL fallback (dev mode)
+  const amllBases = [AMLL_BASE, "https://webmusic.cc.cd/amll-ttml-db/ncm-lyrics"];
+  for (const base of amllBases) {
+    for (const ext of [".ttml", ".yrc"]) {
+      try {
+        const ttmlRes = await fetch(`${base}/${songId}${ext}`);
+        if (ttmlRes.ok) {
+          const ttml = await ttmlRes.text();
+          if (ttml.trim() && ttml.length > 200 && !ttml.startsWith("<!")) {
+            console.log(`[Lyrics] got AMLL (${ext}) for ${songId}`);
+            return { ttml, metadata: [] };
+          }
+        }
+      } catch {}
+    }
+  }
+
+  return null;
 };

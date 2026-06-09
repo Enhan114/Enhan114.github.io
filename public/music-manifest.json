@@ -14,7 +14,8 @@
     "title": "SLEEP",
     "artist": "董宇尘",
     "id": "static-------SLEEP-flac",
-    "neteaseId": "2738885153"
+    "neteaseId": "2738885153",
+    "ttmlPath": "music/SLEEP.ttml"
   },
   {
     "filePath": "music/A s h - Melody (Original mix).flac",
@@ -22,7 +23,8 @@
     "title": "Melody (Original mix)",
     "artist": "A s h",
     "id": "static-A-s-h---Melody--Original-mix--flac",
-    "neteaseId": "36921285"
+    "neteaseId": "36921285",
+    "ttmlPath": "music/Melody (Original mix).ttml"
   },
   {
     "filePath": "music/Aaron Smith,Luvli,Krono - Dancin (Krono Remix).flac",
@@ -31,7 +33,7 @@
     "artist": "Aaron Smith,Luvli,Krono",
     "id": "static-Aaron-Smith-Luvli-Krono---Dancin--Krono-Remix--flac",
     "neteaseId": "439121233",
-    "yrcPath": "music/Dancin (Krono Remix).yrc"
+    "ttmlPath": "music/Dancin (Krono Remix).ttml"
   },
   {
     "filePath": "music/Andrew Prahlow - Travelers' encore.flac",
@@ -39,7 +41,8 @@
     "title": "Travelers' encore",
     "artist": "Andrew Prahlow",
     "id": "static-Andrew-Prahlow---Travelers--encore-flac",
-    "neteaseId": "1879098277"
+    "neteaseId": "1879098277",
+    "ttmlPath": "music/Travelers' encore.ttml"
   },
   {
     "filePath": "music/Athletics - III.flac",
@@ -48,7 +51,7 @@
     "artist": "Athletics",
     "id": "static-Athletics---III-flac",
     "neteaseId": "3947467",
-    "yrcPath": "music/III.yrc"
+    "ttmlPath": "music/III.ttml"
   },
   {
     "filePath": "music/Bebe Rexha - Ferrari.flac",
@@ -57,7 +60,7 @@
     "artist": "Bebe Rexha",
     "id": "static-Bebe-Rexha---Ferrari-flac",
     "neteaseId": "550936829",
-    "yrcPath": "music/Ferrari.yrc"
+    "ttmlPath": "music/Ferrari.ttml"
   },
   {
     "filePath": "music/Beyond - 海阔天空.flac",
@@ -65,7 +68,8 @@
     "title": "海阔天空",
     "artist": "Beyond",
     "id": "static-Beyond--------flac",
-    "neteaseId": "1357375695"
+    "neteaseId": "1357375695",
+    "ttmlPath": "music/海阔天空.ttml"
   },
   {
     "filePath": "music/Fadi - Hold On.flac",
@@ -73,7 +77,8 @@
     "title": "Hold On",
     "artist": "Fadi",
     "id": "static-Fadi---Hold-On-flac",
-    "neteaseId": "2064842045"
+    "neteaseId": "2064842045",
+    "ttmlPath": "music/Hold On.ttml"
   },
   {
     "filePath": "music/handsome lau,HYPEEZY,冯泳 - 梦醒.flac",
@@ -81,7 +86,8 @@
     "title": "梦醒",
     "artist": "handsome lau,HYPEEZY,冯泳",
     "id": "static-handsome-lau-HYPEEZY---------flac",
-    "neteaseId": "1395222212"
+    "neteaseId": "1395222212",
+    "ttmlPath": "music/梦醒.ttml"
   },
   {
     "filePath": "music/ILLENIUM,Phoebe Ryan - Mine (Illenium Remix).flac",
@@ -99,7 +105,7 @@
     "artist": "Lindsey Stirling,Mako",
     "id": "static-Lindsey-Stirling-Mako---Lose-You-Now-flac",
     "neteaseId": "1809169083",
-    "yrcPath": "music/Lose You Now.yrc"
+    "ttmlPath": "music/Lose You Now.ttml"
   },
   {
     "filePath": "music/Madnap,Pauline Herr - Slow Down.flac",
@@ -107,7 +113,8 @@
     "title": "Slow Down",
     "artist": "Madnap,Pauline Herr",
     "id": "static-Madnap-Pauline-Herr---Slow-Down-flac",
-    "neteaseId": "1958031039"
+    "neteaseId": "1958031039",
+    "ttmlPath": "music/Slow Down.ttml"
   },
   {
     "filePath": "music/Maroon 5,Wiz Khalifa - Payphone.flac",
@@ -116,7 +123,7 @@
     "artist": "Maroon 5,Wiz Khalifa",
     "id": "static-Maroon-5-Wiz-Khalifa---Payphone-flac",
     "neteaseId": "4172700",
-    "yrcPath": "music/Payphone.yrc"
+    "ttmlPath": "music/Payphone.ttml"
   },
   {
     "filePath": "music/Martin Garrix,David Guetta,Jamie Scott - So Far Away.flac",
@@ -125,7 +132,7 @@
     "artist": "Martin Garrix,David Guetta,Jamie Scott",
     "id": "static-Martin-Garrix-David-Guetta-Jamie-Scott---So-Far-Away-flac",
     "neteaseId": "521416693",
-    "yrcPath": "music/So Far Away.yrc"
+    "ttmlPath": "music/So Far Away.ttml"
   },
   {
     "filePath": "music/Matte,Ember Island - Umbrella (Matte Remix).flac",
@@ -134,7 +141,7 @@
     "artist": "Matte,Ember Island",
     "id": "static-Matte-Ember-Island---Umbrella--Matte-Remix--flac",
     "neteaseId": "518904426",
-    "yrcPath": "music/Umbrella (Matte Remix).yrc"
+    "ttmlPath": "music/Umbrella (Matte Remix).ttml"
   },
   {
     "filePath": "music/Max Elto,Adventure Club - Shadow Of The Sun (Adventure Club Remix).flac",
@@ -143,7 +150,7 @@
     "artist": "Max Elto,Adventure Club",
     "id": "static-Max-Elto-Adventure-Club---Shadow-Of-The-Sun--Adventure-Club-Remix--flac",
     "neteaseId": "28411642",
-    "yrcPath": "music/Shadow Of The Sun (Adventure Club Remix).yrc"
+    "ttmlPath": "music/Shadow Of The Sun (Adventure Club Remix).ttml"
   },
   {
     "filePath": "music/MGD,MXZHPHXNK - Sinos De Natal.flac",
@@ -151,7 +158,8 @@
     "title": "Sinos De Natal",
     "artist": "MGD,MXZHPHXNK",
     "id": "static-MGD-MXZHPHXNK---Sinos-De-Natal-flac",
-    "neteaseId": "3320179802"
+    "neteaseId": "3320179802",
+    "ttmlPath": "music/Sinos De Natal.ttml"
   },
   {
     "filePath": "music/mixed matches,Lukrative - Maybe.flac",
@@ -160,7 +168,7 @@
     "artist": "mixed matches,Lukrative",
     "id": "static-mixed-matches-Lukrative---Maybe-flac",
     "neteaseId": "1393412185",
-    "yrcPath": "music/Maybe.yrc"
+    "ttmlPath": "music/Maybe.ttml"
   },
   {
     "filePath": "music/murkish,Huken,harmony haven - Wasted (Nightcore) [Bass Boosted] (feat. harmony haven).flac",
@@ -168,7 +176,8 @@
     "title": "Wasted (Nightcore) [Bass Boosted] (feat",
     "artist": "murkish,Huken,harmony haven",
     "id": "static-murkish-Huken-harmony-haven---Wasted--Nightcore---Bass-Boosted---feat--harmony-haven--flac",
-    "neteaseId": "1968316652"
+    "neteaseId": "1968316652",
+    "ttmlPath": "music/Wasted (Nightcore) [Bass Boosted] (feat.ttml"
   },
   {
     "filePath": "music/NiCo - Bleeding Love.flac",
@@ -177,7 +186,7 @@
     "artist": "NiCo",
     "id": "static-NiCo---Bleeding-Love-flac",
     "neteaseId": "1388433823",
-    "yrcPath": "music/Bleeding Love.yrc"
+    "ttmlPath": "music/Bleeding Love.ttml"
   },
   {
     "filePath": "music/OneRepublic - Counting Stars.flac",
@@ -186,7 +195,7 @@
     "artist": "OneRepublic",
     "id": "static-OneRepublic---Counting-Stars-flac",
     "neteaseId": "26060065",
-    "yrcPath": "music/Counting Stars.yrc"
+    "ttmlPath": "music/Counting Stars.ttml"
   },
   {
     "filePath": "music/Professor Green - In The Shadow Of The Sun.flac",
@@ -203,7 +212,8 @@
     "title": "Love Is Gone (Acoustic)",
     "artist": "SLANDER,Dylan Matthew",
     "id": "static-SLANDER-Dylan-Matthew---Love-Is-Gone--Acoustic--flac",
-    "neteaseId": "2724994876"
+    "neteaseId": "2724994876",
+    "ttmlPath": "music/Love Is Gone (Acoustic).ttml"
   },
   {
     "filePath": "music/SYNTH - 247.flac",
@@ -211,7 +221,8 @@
     "title": "247",
     "artist": "SYNTH",
     "id": "static-SYNTH---247-flac",
-    "neteaseId": "1480504807"
+    "neteaseId": "1480504807",
+    "ttmlPath": "music/247.ttml"
   },
   {
     "filePath": "music/The Chainsmokers,Coldplay - Something Just Like This.flac",
@@ -220,7 +231,7 @@
     "artist": "The Chainsmokers,Coldplay",
     "id": "static-The-Chainsmokers-Coldplay---Something-Just-Like-This-flac",
     "neteaseId": "461347998",
-    "yrcPath": "music/Something Just Like This.yrc"
+    "ttmlPath": "music/Something Just Like This.ttml"
   },
   {
     "filePath": "music/Twinbed - Trouble I'm In.flac",
@@ -229,7 +240,7 @@
     "artist": "Twinbed",
     "id": "static-Twinbed---Trouble-I-m-In-flac",
     "neteaseId": "29758362",
-    "yrcPath": "music/Trouble I'm In.yrc"
+    "ttmlPath": "music/Trouble I'm In.ttml"
   },
   {
     "filePath": "music/wenznv - Lost Within The End.flac",
@@ -237,7 +248,8 @@
     "title": "Lost Within The End",
     "artist": "wenznv",
     "id": "static-wenznv---Lost-Within-The-End-flac",
-    "neteaseId": "2670833053"
+    "neteaseId": "2670833053",
+    "ttmlPath": "music/Lost Within The End.ttml"
   },
   {
     "filePath": "music/Xai小爱 - 告白气球（Cover）.flac",
@@ -245,7 +257,8 @@
     "title": "告白气球（Cover）",
     "artist": "Xai小爱",
     "id": "static-Xai----------Cover--flac",
-    "neteaseId": "2716020167"
+    "neteaseId": "2716020167",
+    "ttmlPath": "music/告白气球（Cover）.ttml"
   },
   {
     "filePath": "music/Zeraphym 六翼使徒 - Lifeline.flac",
@@ -253,6 +266,7 @@
     "title": "Lifeline",
     "artist": "Zeraphym 六翼使徒",
     "id": "static-Zeraphym--------Lifeline-flac",
-    "neteaseId": "38019092"
+    "neteaseId": "38019092",
+    "ttmlPath": "music/Lifeline.ttml"
   }
 ]

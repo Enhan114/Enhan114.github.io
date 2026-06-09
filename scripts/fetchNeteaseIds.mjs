@@ -1,11 +1,9 @@
 /**
- * Build-time lyrics fetcher — only word-level timing formats.
+ * Build-time lyrics fetcher.
  * 1. Search NetEase ID via music-api.cc.cd
- * 2. Download TTML from AMLL (best, word-level timing)
- * 3. No AMLL TTML? → Download YRC (逐字歌词) from music-api.cc.cd
- * 4. Update music-manifest.json
+ * 2. Download FULL API response → save as .ttml (parseLyrics handles it)
+ * 3. AMLL TTML as fallback if API unreachable
  *
- * Output: .ttml (AMLL) or .yrc (NetEase), NO .lrc
  * Node.js — no CORS.  node scripts/fetchNeteaseIds.mjs
  */
 
@@ -23,21 +21,19 @@ mkdirSync(musicDir, { recursive: true });
 const sanitize = (s) => s.replace(/[<>:"/\\|?*]/g, "");
 
 const API = "https://music-api.cc.cd";
-const AMLL = "https://amll-ttml-db.stevexmh.net/ncm";
+const AMLL = "https://webmusic.cc.cd/amll-ttml-db/ncm-lyrics"; // same-origin, no CORS
 
 const fetchJson = async (url) => { try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; } };
 const fetchText = async (url) => { try { const r = await fetch(url); return r.ok ? (await r.text()).trim() : null; } catch { return null; } };
 
 const main = async () => {
-  console.log("🎵 Fetching AMLL TTML + API YRC (word-level only)...\n");
+  console.log("🎵 Downloading full API lyrics → .ttml...\n");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-  let ids = 0, ttml = 0, yrc = 0;
+  let ids = 0, saved = 0, amll = 0;
 
   for (const entry of manifest) {
     const fn = sanitize(entry.title);
     const ttmlFile = `${fn}.ttml`;
-    const yrcFile = `${fn}.yrc`;
-
     console.log(`🔎 ${entry.artist} — ${entry.title}`);
 
     // 1. NetEase ID
@@ -52,46 +48,38 @@ const main = async () => {
     }
     ids++;
 
-    // 2. API YRC first (user's preference)
-    const data = await fetchJson(`${API}/lyric/new?id=${entry.neteaseId}`);
-    const yrcContent = data?.yrc?.lyric;
-    if (yrcContent && yrcContent.length > 30) {
-      writeFileSync(join(musicDir, yrcFile), yrcContent, "utf-8");
-      entry.yrcPath = `music/${yrcFile}`;
-      delete entry.lyricsPath;
-      delete entry.ttmlPath;
-      yrc++;
-      console.log(`  📝 YRC`);
-      await sleep(400);
-      continue;
+    // 2. Download full API response, save as .ttml
+    if (!existsSync(join(musicDir, ttmlFile))) {
+      const fullJson = await fetchText(`${API}/lyric/new?id=${entry.neteaseId}`);
+      if (fullJson && fullJson.length > 30) {
+        writeFileSync(join(musicDir, ttmlFile), fullJson, "utf-8");
+        saved++;
+        console.log(`  📝 Saved: ${ttmlFile}`);
+      } else {
+        // 3. AMLL fallback
+        const ttml = await fetchText(`${AMLL}/${entry.neteaseId}`);
+        if (ttml && ttml.length > 30) {
+          writeFileSync(join(musicDir, ttmlFile), ttml, "utf-8");
+          amll++;
+          console.log(`  🎯 AMLL fallback`);
+        } else {
+          console.log(`  ⚠️  No lyrics`);
+        }
+      }
+    } else {
+      saved++;
+      console.log(`  ⏭️  Already exists`);
     }
 
-    // 3. AMLL TTML fallback
-    const hasTtmlOnDisk = existsSync(join(musicDir, ttmlFile));
-    let gotTtml = hasTtmlOnDisk;
-    if (!hasTtmlOnDisk) {
-      const content = await fetchText(`${AMLL}/${entry.neteaseId}`);
-      if (content && content.length > 30) {
-        writeFileSync(join(musicDir, ttmlFile), content, "utf-8");
-        gotTtml = true;
-      }
-    }
-    if (gotTtml) {
-      entry.ttmlPath = `music/${ttmlFile}`;
-      delete entry.lyricsPath;
-      try { unlinkSync(join(musicDir, yrcFile)); } catch {}
-      try { unlinkSync(join(musicDir, `${fn}.lrc`)); } catch {}
-      ttml++;
-      console.log(`  🎯 TTML (AMLL fallback)`);
-    } else {
-      console.log(`  ⚠️  No lyrics`);
-    }
+    entry.ttmlPath = `music/${ttmlFile}`;
+    delete entry.yrcPath;
+    delete entry.lyricsPath;
 
     await sleep(400);
   }
 
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
-  console.log(`\n✅ Done! ${ids} IDs, ${ttml} TTML, ${yrc} YRC, ${manifest.length} total.`);
+  console.log(`\n✅ Done! ${ids} IDs, ${saved} API, ${amll} AMLL, ${manifest.length} total.`);
 };
 
 main().catch((e) => { console.error("Failed:", e); process.exit(1); });

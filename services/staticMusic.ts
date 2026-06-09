@@ -1,5 +1,6 @@
 import { Song } from "../types";
 import { extractColors } from "./utils";
+import { KNOWN_IDS } from "./knownIds";
 
 interface ManifestEntry {
   id: string;
@@ -51,43 +52,71 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       }
     }
 
-    // Load word-level lyrics — TTML (AMLL) or YRC (NetEase API)
+    // Load lyrics — try manifest path, then derive from title (immune to manifest reversion)
     let lyrics: import("../types").LyricLine[] = [];
     let needsLyricsMatch = true;
-    const { parseLyrics, isTtmlFormat } = await import("./lyrics");
+    const { parseLrc } = await import("./lyrics/lrc");
+    const { mergeTranslations } = await import("./lyrics/translation");
+    const sanitize = (s: string) => s.replace(/[<>:"/\\|?*]/g, "");
+    const candidates = [item.ttmlPath, `music/${sanitize(item.title)}.ttml`];
 
-    if (item.yrcPath) {
+    for (const candidate of candidates) {
+      if (!candidate || lyrics.length > 0) continue;
       try {
-        const url = resolveAssetUrl(item.yrcPath);
+        const url = resolveAssetUrl(candidate);
         const res = await fetch(url);
         if (res.ok) {
-          const text = await res.text();
-          if (text.trim()) {
-            const { parseNeteaseLyrics } = await import("./lyrics/netease");
-            lyrics = parseNeteaseLyrics(text);
-            needsLyricsMatch = false;
-            console.log(`[Static] YRC: ${item.title} (${lyrics.length} lines)`);
-          }
-        }
-      } catch { /* unavailable */ }
-    }
+          const text = (await res.text()).trim();
+          if (!text) continue;
+          // API JSON: extract ALL fields, keep metadata lines as real lyrics
+          if (text.startsWith("{")) {
+            try {
+              const json = JSON.parse(text);
+              const lrcRaw: string = json.lrc?.lyric || "";
+              const tlyricRaw: string = json.tlyric?.lyric || "";
+              const romanRaw: string = json.romalrc?.lyric || "";
 
-    if (lyrics.length === 0 && item.ttmlPath) {
-      try {
-        const url = resolveAssetUrl(item.ttmlPath);
-        const res = await fetch(url);
-        if (res.ok) {
-          const text = await res.text();
-          if (text.trim() && isTtmlFormat(text)) {
+              // Convert JSON metadata lines (制作人, 作词, etc.) to LyricLine[]
+              const metaLines: import("../types").LyricLine[] = [];
+              for (const line of lrcRaw.split("\n")) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith('{"t":')) continue;
+                try {
+                  const meta = JSON.parse(trimmed);
+                  const ms: number = meta.t || 0;
+                  const text = (meta.c as Array<{ tx?: string }>)
+                    ?.map((c) => c.tx || "")
+                    .join("")
+                    .trim();
+                  if (text) metaLines.push({ time: ms / 1000, text, isMetadata: false });
+                } catch { /* not valid JSON metadata */ }
+              }
+
+              // Parse LRC (ignores JSON lines, keeps [mm:ss.xx] lines)
+              if (lrcRaw) {
+                lyrics = parseLrc(lrcRaw);
+                if (tlyricRaw) lyrics = mergeTranslations(lyrics, tlyricRaw);
+                // Prepend metadata lines at the beginning
+                if (metaLines.length > 0) lyrics = [...metaLines, ...lyrics];
+                needsLyricsMatch = false;
+              }
+            } catch { /* invalid JSON, skip */ }
+          } else {
+            // AMLL TTML or other format
+            const { parseLyrics } = await import("./lyrics");
             lyrics = parseLyrics(text);
             needsLyricsMatch = false;
-            console.log(`[Static] TTML: ${item.title} (${lyrics.length} lines)`);
           }
         }
-      } catch { /* unavailable */ }
+      } catch { /* file not found */ }
+    }
+    if (lyrics.length > 0) {
+      console.log(`[Static] Lyrics: ${item.title} (${lyrics.length} lines)`);
     }
 
-    const hasNeteaseId = item.neteaseId && item.neteaseId.trim().length > 0;
+    // Use manifest neteaseId, fall back to hardcoded known IDs
+    const effectiveId = item.neteaseId?.trim() || KNOWN_IDS[item.title] || "";
+    const hasNeteaseId = Boolean(effectiveId);
     songs.push({
       id: item.id,
       title: item.title,
@@ -99,7 +128,7 @@ export const loadStaticSongs = async (): Promise<Song[]> => {
       lyrics,
       needsLyricsMatch,
       isNetease: hasNeteaseId || undefined,
-      neteaseId: hasNeteaseId ? item.neteaseId : undefined,
+      neteaseId: hasNeteaseId ? effectiveId : undefined,
       colors: colors.length > 0 ? colors : [],
     });
   }
