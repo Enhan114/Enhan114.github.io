@@ -84,6 +84,10 @@ for %%f in ("!DIR_PATH!\*.flac") do (
 
 :build_only
 echo.
+echo   --- Syncing FLAC to docs... ---
+if not exist "docs\music" mkdir "docs\music"
+copy "public\music\*.flac" "docs\music\" >nul 2>&1
+copy "public\music\*.mp3" "docs\music\" >nul 2>&1
 echo   --- Building... ---
 call npx vite build --logLevel error
 echo   --- Unlocking manifest for commit... ---
