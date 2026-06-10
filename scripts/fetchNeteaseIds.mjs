@@ -48,23 +48,41 @@ const main = async () => {
     }
     ids++;
 
-    // 2. Download full API response, save as .ttml
+    // 2. Download lyrics from selected source (env LYRICS_SOURCE: api/amll, default api)
     if (!existsSync(join(musicDir, ttmlFile))) {
-      const fullJson = await fetchText(`${API}/lyric/new?id=${entry.neteaseId}`);
-      if (fullJson && fullJson.length > 30) {
-        writeFileSync(join(musicDir, ttmlFile), fullJson, "utf-8");
-        saved++;
-        console.log(`  📝 Saved: ${ttmlFile}`);
-      } else {
-        // 3. AMLL fallback
-        const ttml = await fetchText(`${AMLL}/${entry.neteaseId}`);
-        if (ttml && ttml.length > 30) {
-          writeFileSync(join(musicDir, ttmlFile), ttml, "utf-8");
-          amll++;
-          console.log(`  🎯 AMLL fallback`);
+      const preferAmll = process.env.LYRICS_SOURCE === "amll";
+      let content = null;
+
+      const tryAmll = async () => {
+        const t = await fetchText(`${AMLL}/${entry.neteaseId}.ttml`);
+        if (!t) return await fetchText(`${AMLL}/${entry.neteaseId}.yrc`);
+        return t;
+      };
+
+      if (preferAmll) {
+        // AMLL first, API fallback
+        content = await tryAmll();
+        if (content && content.length > 30) {
+          amll++; console.log(`  🎯 AMLL`);
         } else {
-          console.log(`  ⚠️  No lyrics`);
+          content = await fetchText(`${API}/lyric/new?id=${entry.neteaseId}`);
+          if (content && content.length > 30) { saved++; console.log(`  📝 API fallback`); }
         }
+      } else {
+        // API first, AMLL fallback
+        content = await fetchText(`${API}/lyric/new?id=${entry.neteaseId}`);
+        if (content && content.length > 30) {
+          saved++; console.log(`  📝 API`);
+        } else {
+          content = await tryAmll();
+          if (content && content.length > 30) { amll++; console.log(`  🎯 AMLL fallback`); }
+        }
+      }
+
+      if (content && content.length > 30) {
+        writeFileSync(join(musicDir, ttmlFile), content, "utf-8");
+      } else {
+        console.log(`  ⚠️  No lyrics`);
       }
     } else {
       saved++;

@@ -1,0 +1,8 @@
+# 用 API 歌词（默认）
+node scripts/add-music.mjs "C:\Users\jinkela\Downloads\READY GIT MUSIC\Beyond - 海阔天空.flac"
+
+# 用 AMLL 歌词
+node scripts/add-music.mjs "C:\Users\jinkela\Downloads\READY GIT MUSIC\Beyond - 海阔天空.flac" --source=amll
+
+# 从任意目录加歌，指定项目位置
+node "C:\Web Music\scripts\add-music.mjs" "C:\Users\jinkela\Downloads\READY GIT MUSIC\Beyond - 海阔天空.flac" --source=api --project="C:\Web Music"
