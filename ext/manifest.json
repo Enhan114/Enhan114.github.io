@@ -1,44 +1,34 @@
 {
   "manifest_version": 3,
   "name": "Aura Music Control",
-  "version": "1.0",
-  "description": "全局快捷键控制 Aura Music — 支持媒体键和自定义组合键",
+  "version": "2.0",
+  "description": "Global shortcuts for Aura Music. Customize in chrome://extensions/shortcuts",
   "permissions": ["tabs", "scripting"],
   "host_permissions": [
     "*://webmusic.cc.cd/*",
     "*://killmyworld.github.io/*",
-    "*://killmywor.gitee.io/*",
     "*://localhost/*"
   ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "*://webmusic.cc.cd/*",
-        "*://killmyworld.github.io/*",
-        "*://killmywor.gitee.io/*",
-        "*://localhost/*"
-      ],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [{
+    "matches": ["*://webmusic.cc.cd/*", "*://killmyworld.github.io/*", "*://localhost/*"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }],
   "commands": {
-    "prev-track": {
-      "suggested_key": { "default": "Ctrl+Shift+Left" },
-      "description": "上一首 (Ctrl+Shift+←)",
-      "global": true
-    },
     "play-pause": {
       "suggested_key": { "default": "Ctrl+Shift+Space" },
-      "description": "播放/暂停 (Ctrl+Shift+Space)",
+      "description": "Play / Pause",
       "global": true
     },
     "next-track": {
       "suggested_key": { "default": "Ctrl+Shift+Right" },
-      "description": "下一首 (Ctrl+Shift+→)",
+      "description": "Next track",
+      "global": true
+    },
+    "prev-track": {
+      "suggested_key": { "default": "Ctrl+Shift+Left" },
+      "description": "Previous track",
       "global": true
     }
   }

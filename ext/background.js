@@ -1,5 +1,4 @@
-// ── Aura Music Control — background ──
-// Global shortcut → inject handler directly into Aura tab
+// ── Aura Music Control v2 — background ──
 
 const URLS = [
   "*://localhost/*",
@@ -7,45 +6,42 @@ const URLS = [
   "*://killmyworld.github.io/*",
 ];
 
-const HANDLER_CODE = (command) => {
+// Direct handler injected when content script unreachable
+const DIRECT_HANDLER = (command) => {
   const audio = document.querySelector("audio");
-  if (command === "play-pause" && audio) {
+  if (!audio) return;
+  if (command === "play-pause") {
     audio.paused ? audio.play() : audio.pause();
     return;
   }
-  // Prev/Next: dispatch keyboard events for the app's shortcut system
   const keys = {
-    "prev-track": { key: "ArrowLeft",  code: "ArrowLeft",  ctrlKey: true  },
-    "next-track": { key: "ArrowRight", code: "ArrowRight", ctrlKey: true  },
+    "prev-track": { key: "ArrowLeft", code: "ArrowLeft", ctrlKey: true },
+    "next-track": { key: "ArrowRight", code: "ArrowRight", ctrlKey: true },
   };
   const k = keys[command];
   if (k) {
-    const evt = new KeyboardEvent("keydown", { ...k, shiftKey: false, metaKey: false, altKey: false, bubbles: true, cancelable: true });
-    window.dispatchEvent(evt);
+    const e = new KeyboardEvent("keydown", { ...k, shiftKey: false, metaKey: false, altKey: false, bubbles: true, cancelable: true });
+    window.dispatchEvent(e);
   }
 };
 
 chrome.commands.onCommand.addListener(async (command) => {
-  console.log("[AuraExt] command:", command);
   const tabs = await chrome.tabs.query({ url: URLS });
-  if (!tabs.length) { console.log("[AuraExt] no Aura tab found"); return; }
+  if (!tabs.length) return;
 
   const tabId = tabs[0].id;
-  // Try message first
+
+  // Try content script message first
   try {
     await chrome.tabs.sendMessage(tabId, { command });
-    console.log("[AuraExt] message sent OK");
   } catch {
-    // Content script not ready — inject directly
+    // Content script not loaded — inject handler directly
     try {
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: HANDLER_CODE,
+        func: DIRECT_HANDLER,
         args: [command],
       });
-      console.log("[AuraExt] injected directly");
-    } catch (e) {
-      console.warn("[AuraExt] injection failed:", e);
-    }
+    } catch {}
   }
 });
