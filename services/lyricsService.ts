@@ -2,7 +2,7 @@ import { fetchViaProxy } from "./utils";
 import { isMetadataLine } from "./lyrics/types";
 
 const NETEASE_API = "https://music-api.cc.cd";
-const AMLL_BASE = "/amll-ttml-db/ncm-lyrics"; // same-origin, no CORS
+const AMLL_BASE = "https://webmusic.cc.cd/amll-ttml-db/ncm-lyrics"; // production URL, no CORS on same domain
 
 const TIMESTAMP_REGEX = /^\[(\d{2}):(\d{2})(?:[\.:](\d{2,3}))?\](.*)$/;
 

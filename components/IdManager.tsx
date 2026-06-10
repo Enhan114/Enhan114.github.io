@@ -45,8 +45,25 @@ const fetchFromApi = async (id: string): Promise<import("../types").LyricLine[]>
 };
 
 const fetchFromAmll = async (id: string): Promise<import("../types").LyricLine[]> => {
-  for (const base of AMLL_PATHS) for (const ext of [".ttml", ".yrc"]) {
-    try { const r = await fetch(`${base}/${id}${ext}`); if (r.ok) { const t = await r.text(); if(t[0]!=='<'||t.length<200) continue; const { parseLyrics } = await import("../services/lyrics"); return parseLyrics(t); } } catch {}
+  const bases = [
+    "https://webmusic.cc.cd/amll-ttml-db/ncm-lyrics",
+    "/amll-ttml-db/ncm-lyrics",
+  ];
+  for (const base of bases) {
+    for (const ext of [".ttml", ".yrc"]) {
+      try {
+        const r = await fetch(`${base}/${id}${ext}`);
+        if (!r.ok) continue;
+        const t = await r.text();
+        // Reject HTML responses (Vite dev server fallback)
+        if (t.startsWith("<!")) continue;
+        if (t.length < 200) continue;
+        if (t.startsWith("<tt") || t.startsWith("<?xml") || t.startsWith("[")) {
+          const { parseLyrics } = await import("../services/lyrics");
+          return parseLyrics(t);
+        }
+      } catch {}
+    }
   }
   return [];
 };
