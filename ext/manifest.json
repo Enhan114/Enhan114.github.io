@@ -27,18 +27,18 @@
   ],
   "commands": {
     "prev-track": {
-      "suggested_key": { "default": "MediaPrevTrack" },
-      "description": "上一首",
+      "suggested_key": { "default": "Ctrl+Shift+Left" },
+      "description": "上一首 (Ctrl+Shift+←)",
       "global": true
     },
     "play-pause": {
-      "suggested_key": { "default": "MediaPlayPause" },
-      "description": "播放 / 暂停",
+      "suggested_key": { "default": "Ctrl+Shift+Space" },
+      "description": "播放/暂停 (Ctrl+Shift+Space)",
       "global": true
     },
     "next-track": {
-      "suggested_key": { "default": "MediaNextTrack" },
-      "description": "下一首",
+      "suggested_key": { "default": "Ctrl+Shift+Right" },
+      "description": "下一首 (Ctrl+Shift+→)",
       "global": true
     }
   }
