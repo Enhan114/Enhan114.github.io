@@ -126,12 +126,24 @@ export const preloadAll = async (
         onProgress({ done, total: totalSteps, current: song.title, currentType: "audio" });
         onSongProgress(song.id, "audio", "loading");
         try {
-          const cached = audioResourceCache.get(song.fileUrl);
+          // Resolve audio URL: check ID Manager override → resolve API URL → get real URL
+          const customAudioUrl = (window as any).__auraGetAudioUrl?.(song) || song.fileUrl;
+          let downloadUrl = customAudioUrl;
+          if (downloadUrl.includes("music-api.cc.cd/song/url")) {
+            try {
+              const res = await fetch(downloadUrl);
+              const data = await res.json();
+              const real = typeof data?.data === "string" ? data.data : data?.data?.url;
+              if (real) downloadUrl = real;
+            } catch { /* keep original */ }
+          }
+
+          const cached = audioResourceCache.get(downloadUrl);
           if (cached) {
             onSongProgress(song.id, "audio", "done", { loaded: cached.size, total: cached.size, speed: 0 });
           } else {
             await fetchAudioWithProgress(
-              song.fileUrl,
+              downloadUrl,
               audioResourceCache as { set: (k: string, b: Blob) => void },
               (p) => onSongProgress(song.id, "audio", "loading", p),
             );
