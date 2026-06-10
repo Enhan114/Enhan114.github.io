@@ -29,19 +29,6 @@ bun.lock
 image.png
 image.jpeg
 
-# Music audio files (too large for git, hosted separately)
-public/music/*.flac
-public/music/*.mp3
-public/music/*.ogg
-public/music/*.wav
-public/music/*.m4a
-public/music/*.aac
-docs/music/*.flac
-docs/music/*.mp3
-docs/music/*.ogg
-docs/music/*.wav
-docs/music/*.m4a
-docs/music/*.aac
-# Keep .gitkeep and all lyrics/image files
+# Keep .gitkeep files
 !public/music/.gitkeep
 !docs/music/.gitkeep
