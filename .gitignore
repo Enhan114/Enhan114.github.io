@@ -32,3 +32,10 @@ image.jpeg
 # Keep .gitkeep files
 !public/music/.gitkeep
 !docs/music/.gitkeep
+# Music audio files
+public/music/*.flac
+public/music/*.mp3
+docs/music/*.flac
+docs/music/*.mp3
+!public/music/.gitkeep
+!docs/music/.gitkeep
